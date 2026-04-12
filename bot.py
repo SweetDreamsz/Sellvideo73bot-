@@ -99,9 +99,9 @@ async def check_sub(user_id):
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ["creator", "administrator", "member"]
     except:
-        return True
+        return False  # ВАЖНО!
 
-# ===== ТОВАРЫ (ВСЕ 12) =====
+# ===== ТОВАРЫ =====
 PRODUCTS = {
     "1": {"name": "Disable HumaNity Vol 3", "price": 50, "video": "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"},
     "2": {"name": "S.A.C necrophiliA", "price": 100, "video": "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"},
@@ -144,15 +144,15 @@ async def start(message: types.Message):
     if ref and ref != message.from_user.id:
         add_balance(ref, 3)
 
-    # проверка подписки
+    # 🔒 проверка подписки
     if not await check_sub(message.from_user.id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
             [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
         ])
-        return await message.answer("Подпишись на канал", reply_markup=kb)
+        return await message.answer("❗ Сначала подпишись на канал", reply_markup=kb)
 
-    # капча
+    # 🤖 капча
     if not is_verified(message.from_user.id):
         text, kb = generate_captcha(message.from_user.id)
         return await message.answer(text, reply_markup=kb)
@@ -163,9 +163,14 @@ async def start(message: types.Message):
 @dp.callback_query(F.data == "check_sub")
 async def check(call: types.CallbackQuery):
     if await check_sub(call.from_user.id):
-        text, kb = generate_captcha(call.from_user.id)
+        await call.message.delete()
         await call.message.answer("✅ Подписка подтверждена")
-        await call.message.answer(text, reply_markup=kb)
+
+        if not is_verified(call.from_user.id):
+            text, kb = generate_captcha(call.from_user.id)
+            await call.message.answer(text, reply_markup=kb)
+        else:
+            await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
     else:
         await call.answer("❌ Подпишись", show_alert=True)
 
@@ -186,7 +191,7 @@ async def captcha_check(call: types.CallbackQuery):
     else:
         await call.answer("❌ Неверно", show_alert=True)
 
-# ===== КАТАЛОГ (С ПАГИНАЦИЕЙ) =====
+# ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
 async def catalog(call):
     page = int(call.data.split("_")[1])
