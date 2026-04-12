@@ -1,17 +1,13 @@
 import asyncio
 import logging
 import sqlite3
-import os
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН"
 ADMIN_ID = 8314718448
-
-PHOTO_MENU = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo.jpg"
-PHOTO_PRODUCT = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
-VIDEO_FILE = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/video.mp4"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,124 +21,158 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    purchased INTEGER DEFAULT 0
+    purchased TEXT DEFAULT ''
 )
 """)
 conn.commit()
 
-def add_user(user_id):
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+def add_user(uid):
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (uid,))
     conn.commit()
 
-def mark_purchased(user_id):
-    cursor.execute("UPDATE users SET purchased=1 WHERE user_id=?", (user_id,))
+def add_purchase(uid, pid):
+    cursor.execute("SELECT purchased FROM users WHERE user_id=?", (uid,))
+    res = cursor.fetchone()
+    current = res[0] if res else ""
+    cursor.execute("UPDATE users SET purchased=? WHERE user_id=?", (current + pid + ",", uid))
     conn.commit()
 
-def is_purchased(user_id):
-    cursor.execute("SELECT purchased FROM users WHERE user_id=?", (user_id,))
-    result = cursor.fetchone()
-    return result and result[0] == 1
+def has_product(uid, pid):
+    cursor.execute("SELECT purchased FROM users WHERE user_id=?", (uid,))
+    res = cursor.fetchone()
+    return res and pid in (res[0] or "")
+
+# ===== ТОВАРЫ (ВСТАВЬ СВОИ FILE_ID) =====
+PRODUCTS = {
+    "1": {
+        "name": "🔥 Видео 1",
+        "price": 50,
+        "photo": "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg",
+        "video": "PASTE_FILE_ID_1"
+    },
+    "2": {
+        "name": "💜 Видео 2",
+        "price": 75,
+        "photo": "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg",
+        "video": "PASTE_FILE_ID_2"
+    }
+}
+
+PHOTO_MENU = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo.jpg"
 
 # ===== СТАРТ =====
 @dp.message(CommandStart())
 async def start(message: types.Message):
     add_user(message.from_user.id)
 
-    kb = types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="🛒 Купить")],
-            [types.KeyboardButton(text="📦 Мои покупки")]
-        ],
-        resize_keyboard=True
-    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Каталог", callback_data="catalog")],
+        [InlineKeyboardButton(text="📦 Мои покупки", callback_data="my")]
+    ])
 
     await message.answer_photo(
         photo=PHOTO_MENU,
-        caption="💜 Sweet Shop\n\n🎬 Доступ за 50⭐",
+        caption="💜 Добро пожаловать в магазин\n\n🔥 Выбери товар",
         reply_markup=kb
     )
 
-# ===== МАГАЗИН =====
-@dp.message(F.text == "🛒 Купить")
-async def shop(message: types.Message):
+# ===== КАТАЛОГ =====
+@dp.callback_query(F.data == "catalog")
+async def catalog(call: types.CallbackQuery):
 
-    kb = types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="💰 Купить за 50⭐")],
-            [types.KeyboardButton(text="⬅️ Назад")]
-        ],
-        resize_keyboard=True
+    buttons = []
+    for pid, p in PRODUCTS.items():
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{p['name']} • {p['price']}⭐",
+                callback_data=f"product_{pid}"
+            )
+        ])
+
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
+
+    await call.message.answer(
+        "📦 Каталог товаров:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
-    await message.answer_photo(
-        photo=PHOTO_PRODUCT,
-        caption="🎬 Эксклюзивное видео\n💰 Цена: 50⭐",
+# ===== ТОВАР =====
+@dp.callback_query(F.data.startswith("product_"))
+async def product(call: types.CallbackQuery):
+    pid = call.data.split("_")[1]
+    p = PRODUCTS[pid]
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"💰 Купить за {p['price']}⭐", callback_data=f"buy_{pid}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="catalog")]
+    ])
+
+    await call.message.answer_photo(
+        photo=p["photo"],
+        caption=f"{p['name']}\n💰 Цена: {p['price']}⭐",
         reply_markup=kb
     )
-
-@dp.message(F.text == "⬅️ Назад")
-async def back(message: types.Message):
-    await start(message)
 
 # ===== ПОКУПКА =====
-@dp.message(F.text == "💰 Купить за 50⭐")
-async def buy(message: types.Message):
+@dp.callback_query(F.data.startswith("buy_"))
+async def buy(call: types.CallbackQuery):
+    pid = call.data.split("_")[1]
+    p = PRODUCTS[pid]
 
-    prices = [types.LabeledPrice(label="Доступ", amount=50)]
+    prices = [types.LabeledPrice(label=p["name"], amount=p["price"])]
 
     await bot.send_invoice(
-        chat_id=message.chat.id,
-        title="🎬 Покупка",
-        description="Доступ к видео",
-        payload="buy_video",
+        chat_id=call.message.chat.id,
+        title=p["name"],
+        description="Покупка доступа",
+        payload=pid,
         provider_token="",
         currency="XTR",
         prices=prices
     )
 
-# ===== ОБЯЗАТЕЛЬНО =====
+# ===== ПРОВЕРКА =====
 @dp.pre_checkout_query()
-async def pre_checkout(pre_checkout_q: types.PreCheckoutQuery):
-    await pre_checkout_q.answer(ok=True)
+async def checkout(q: types.PreCheckoutQuery):
+    await q.answer(ok=True)
 
 # ===== УСПЕШНАЯ ОПЛАТА =====
 @dp.message(F.successful_payment)
 async def success(message: types.Message):
+    pid = message.successful_payment.invoice_payload
 
-    mark_purchased(message.from_user.id)
+    add_purchase(message.from_user.id, pid)
 
-    await message.answer("✅ Оплата прошла! Вот твое видео 👇")
+    await message.answer("✅ Оплата прошла!")
 
     await message.answer_video(
-        video=VIDEO_FILE,
+        video=PRODUCTS[pid]["video"],
         protect_content=True
     )
 
 # ===== МОИ ПОКУПКИ =====
-@dp.message(F.text == "📦 Мои покупки")
-async def my(message: types.Message):
-    if not is_purchased(message.from_user.id):
-        await message.answer("❌ У тебя нет покупок")
-        return
+@dp.callback_query(F.data == "my")
+async def my(call: types.CallbackQuery):
+    uid = call.from_user.id
 
-    await message.answer_video(
-        video=VIDEO_FILE,
-        protect_content=True
-    )
+    found = False
 
-# ===== АДМИН =====
-@dp.message(Command("stats"))
-async def stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
+    for pid, p in PRODUCTS.items():
+        if has_product(uid, pid):
+            await call.message.answer_video(
+                video=p["video"],
+                protect_content=True
+            )
+            found = True
 
-    cursor.execute("SELECT COUNT(*) FROM users")
-    total = cursor.fetchone()[0]
+    if not found:
+        await call.message.answer("❌ У тебя нет покупок")
 
-    cursor.execute("SELECT COUNT(*) FROM users WHERE purchased=1")
-    buyers = cursor.fetchone()[0]
-
-    await message.answer(f"👥 Пользователей: {total}\n💰 Покупок: {buyers}")
+# ===== ПОЛУЧЕНИЕ FILE_ID (временно включи) =====
+@dp.message()
+async def get_file_id(message: types.Message):
+    if message.video:
+        await message.answer(f"FILE_ID:\n{message.video.file_id}")
 
 # ===== ЗАПУСК =====
 async def main():
