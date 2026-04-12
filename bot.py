@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
+BOT_TOKEN = "842832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 
 CHANNEL_ID = -1003491649657
