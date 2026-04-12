@@ -4,8 +4,9 @@ import sqlite3
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import LabeledPrice
 from aiogram.filters import CommandStart
+import os
 
-BOT_TOKEN = "8637242832:AAFTvqB1A2a7R0re_FGTSDMzrW3MkVAR53M"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
