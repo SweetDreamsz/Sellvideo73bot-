@@ -9,6 +9,11 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 
+CHANNEL_ID = 3491649657
+CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
+
+PHOTO_CATALOG = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
+
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
@@ -31,10 +36,7 @@ def add_user(uid):
     conn.commit()
 
 def add_purchase(uid, pid):
-    cursor.execute("SELECT purchased FROM users WHERE user_id=?", (uid,))
-    res = cursor.fetchone()
-    current = res[0] if res else ""
-    cursor.execute("UPDATE users SET purchased=? WHERE user_id=?", (current + pid + ",", uid))
+    cursor.execute("UPDATE users SET purchased = COALESCE(purchased,'') || ? WHERE user_id=?", (pid+",", uid))
     conn.commit()
 
 def has_product(uid, pid):
@@ -42,7 +44,7 @@ def has_product(uid, pid):
     res = cursor.fetchone()
     return res and pid in (res[0] or "")
 
-# ===== ТОВАРЫ (БЕЗ ФОТО) =====
+# ===== ТОВАРЫ =====
 PRODUCTS = {
     "1": {"name": "Disable HumaNity Vol 3", "price": 50, "video": "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"},
     "2": {"name": "S.A.C necrophiliA", "price": 100, "video": "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"},
@@ -58,24 +60,47 @@ PRODUCTS = {
     "12": {"name": "BlackSatanas 3", "price": 10, "video": "BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA"},
 }
 
-# ===== КАТАЛОГ =====
 CATALOG = list(PRODUCTS.items())
 PER_PAGE = 5
+
+# ===== ПРОВЕРКА ПОДПИСКИ =====
+async def check_sub(uid):
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, uid)
+        return member.status in ["member", "creator", "administrator"]
+    except:
+        return False
+
+# ===== МЕНЮ =====
+def menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💜 Каталог", callback_data="catalog_0")],
+        [InlineKeyboardButton(text="📦 Мои покупки", callback_data="my")],
+        [InlineKeyboardButton(text="⚙️ Админ панель", callback_data="admin")]
+    ])
 
 # ===== СТАРТ =====
 @dp.message(CommandStart())
 async def start(message: types.Message):
     add_user(message.from_user.id)
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛒 Каталог", callback_data="catalog_0")],
-        [InlineKeyboardButton(text="📦 Мои покупки", callback_data="my")]
-    ])
+    if not await check_sub(message.from_user.id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💜 Подписаться", url=CHANNEL_LINK)],
+            [InlineKeyboardButton(text="🔄 Проверить", callback_data="check")]
+        ])
+        await message.answer("💜 Подпишись на канал", reply_markup=kb)
+        return
 
-    await message.answer(
-        "💜 Добро пожаловать в магазин\n\n🔥 Выбери товар",
-        reply_markup=kb
-    )
+    await message.answer("💜 Главное меню", reply_markup=menu())
+
+# ===== ПРОВЕРКА =====
+@dp.callback_query(F.data == "check")
+async def check(call: types.CallbackQuery):
+    if await check_sub(call.from_user.id):
+        await call.message.answer("💜 Доступ открыт", reply_markup=menu())
+    else:
+        await call.answer("❌ Не подписан", show_alert=True)
 
 # ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
@@ -88,30 +113,25 @@ async def catalog(call: types.CallbackQuery):
     items = CATALOG[start:end]
 
     buttons = []
-
     for pid, p in items:
         buttons.append([
-            InlineKeyboardButton(
-                text=f"{p['name']} • {p['price']}⭐",
-                callback_data=f"product_{pid}"
-            )
+            InlineKeyboardButton(text=f"💜 {p['name']} • {p['price']}⭐", callback_data=f"product_{pid}")
         ])
 
     nav = []
-
     if page > 0:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"catalog_{page-1}"))
-
     if end < len(CATALOG):
         nav.append(InlineKeyboardButton(text="➡️", callback_data=f"catalog_{page+1}"))
 
     if nav:
         buttons.append(nav)
 
-    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="catalog_0")])
+    buttons.append([InlineKeyboardButton(text="💜 Меню", callback_data="menu")])
 
-    await call.message.answer(
-        "📦 Каталог товаров:",
+    await call.message.answer_photo(
+        photo=PHOTO_CATALOG,
+        caption="💜 Каталог",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
@@ -122,12 +142,12 @@ async def product(call: types.CallbackQuery):
     p = PRODUCTS[pid]
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💰 Купить за {p['price']}⭐", callback_data=f"buy_{pid}")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="catalog_0")]
+        [InlineKeyboardButton(text=f"💜 Купить • {p['price']}⭐", callback_data=f"buy_{pid}")],
+        [InlineKeyboardButton(text="💜 Меню", callback_data="menu")]
     ])
 
     await call.message.answer(
-        f"🎬 {p['name']}\n\n💰 Цена: {p['price']}⭐",
+        f"💜 {p['name']}\n💰 Цена: {p['price']}⭐",
         reply_markup=kb
     )
 
@@ -142,26 +162,25 @@ async def buy(call: types.CallbackQuery):
     await bot.send_invoice(
         chat_id=call.message.chat.id,
         title=p["name"],
-        description="Покупка доступа",
+        description="Покупка",
         payload=pid,
         provider_token="",
         currency="XTR",
         prices=prices
     )
 
-# ===== ПРОВЕРКА =====
 @dp.pre_checkout_query()
 async def checkout(q: types.PreCheckoutQuery):
     await q.answer(ok=True)
 
-# ===== УСПЕХ =====
+# ===== ВЫДАЧА =====
 @dp.message(F.successful_payment)
 async def success(message: types.Message):
     pid = message.successful_payment.invoice_payload
 
     add_purchase(message.from_user.id, pid)
 
-    await message.answer("✅ Оплата прошла!")
+    await message.answer("💜 Оплата прошла!")
 
     await message.answer_video(
         video=PRODUCTS[pid]["video"],
@@ -174,23 +193,26 @@ async def my(call: types.CallbackQuery):
     uid = call.from_user.id
 
     found = False
-
     for pid, p in PRODUCTS.items():
         if has_product(uid, pid):
-            await call.message.answer_video(
-                video=p["video"],
-                protect_content=True
-            )
+            await call.message.answer_video(video=p["video"], protect_content=True)
             found = True
 
     if not found:
-        await call.message.answer("❌ У тебя нет покупок")
+        await call.message.answer("💜 У тебя нет покупок")
 
-# ===== FILE_ID =====
-@dp.message()
-async def get_file_id(message: types.Message):
-    if message.video:
-        await message.answer(f"FILE_ID:\n{message.video.file_id}")
+# ===== МЕНЮ КНОПКА =====
+@dp.callback_query(F.data == "menu")
+async def back(call: types.CallbackQuery):
+    await call.message.answer("💜 Главное меню", reply_markup=menu())
+
+# ===== АДМИН =====
+@dp.callback_query(F.data == "admin")
+async def admin(call: types.CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return await call.answer("❌ Нет доступа", show_alert=True)
+
+    await call.message.answer("💜 Админ панель")
 
 # ===== ЗАПУСК =====
 async def main():
