@@ -5,8 +5,13 @@ import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 
+# ===== НАСТРОЙКИ =====
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8314718448 # ВСТАВЬ СВОЙ ID
+ADMIN_ID = 8314718448
+
+PHOTO_MENU = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo.jpg"
+PHOTO_PRODUCT = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
+VIDEO_FILE = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/video.mp4"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,11 +43,6 @@ def is_purchased(user_id):
     result = cursor.fetchone()
     return result and result[0] == 1
 
-# ===== ФОТО =====
-PHOTO_MENU = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo.jpg"
-PHOTO_PRODUCT = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
-VIDEO_FILE = "video.mp4"
-
 # ===== СТАРТ =====
 @dp.message(CommandStart())
 async def start(message: types.Message):
@@ -50,7 +50,8 @@ async def start(message: types.Message):
 
     kb = types.ReplyKeyboardMarkup(
         keyboard=[
-            [types.KeyboardButton(text="🛒 Купить")]
+            [types.KeyboardButton(text="🛒 Купить")],
+            [types.KeyboardButton(text="📦 Мои покупки")]
         ],
         resize_keyboard=True
     )
@@ -61,9 +62,9 @@ async def start(message: types.Message):
         reply_markup=kb
     )
 
-# ===== ВЫБОР ТОВАРА =====
+# ===== МАГАЗИН =====
 @dp.message(F.text == "🛒 Купить")
-async def choose_product(message: types.Message):
+async def shop(message: types.Message):
 
     kb = types.ReplyKeyboardMarkup(
         keyboard=[
@@ -75,16 +76,15 @@ async def choose_product(message: types.Message):
 
     await message.answer_photo(
         photo=PHOTO_PRODUCT,
-        caption="🎬 Выбери товар",
+        caption="🎬 Эксклюзивное видео\n💰 Цена: 50⭐",
         reply_markup=kb
     )
 
-# ===== НАЗАД =====
 @dp.message(F.text == "⬅️ Назад")
 async def back(message: types.Message):
     await start(message)
 
-# ===== ОПЛАТА =====
+# ===== ПОКУПКА =====
 @dp.message(F.text == "💰 Купить за 50⭐")
 async def buy(message: types.Message):
 
@@ -92,13 +92,18 @@ async def buy(message: types.Message):
 
     await bot.send_invoice(
         chat_id=message.chat.id,
-        title="Доступ",
-        description="Покупка контента",
-        payload="buy",
+        title="🎬 Покупка",
+        description="Доступ к видео",
+        payload="buy_video",
         provider_token="",
         currency="XTR",
         prices=prices
     )
+
+# ===== ОБЯЗАТЕЛЬНО =====
+@dp.pre_checkout_query()
+async def pre_checkout(pre_checkout_q: types.PreCheckoutQuery):
+    await pre_checkout_q.answer(ok=True)
 
 # ===== УСПЕШНАЯ ОПЛАТА =====
 @dp.message(F.successful_payment)
@@ -106,22 +111,22 @@ async def success(message: types.Message):
 
     mark_purchased(message.from_user.id)
 
-    await message.answer("✅ Оплата прошла!")
+    await message.answer("✅ Оплата прошла! Вот твое видео 👇")
 
     await message.answer_video(
-        video=types.FSInputFile(VIDEO_FILE),
+        video=VIDEO_FILE,
         protect_content=True
     )
 
 # ===== МОИ ПОКУПКИ =====
-@dp.message(Command("my"))
+@dp.message(F.text == "📦 Мои покупки")
 async def my(message: types.Message):
     if not is_purchased(message.from_user.id):
-        await message.answer("❌ Нет доступа")
+        await message.answer("❌ У тебя нет покупок")
         return
 
     await message.answer_video(
-        video=types.FSInputFile(VIDEO_FILE),
+        video=VIDEO_FILE,
         protect_content=True
     )
 
@@ -131,10 +136,13 @@ async def stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
 
-    cursor.execute("SELECT COUNT(*) FROM users WHERE purchased=1")
-    count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total = cursor.fetchone()[0]
 
-    await message.answer(f"💰 Купили: {count}")
+    cursor.execute("SELECT COUNT(*) FROM users WHERE purchased=1")
+    buyers = cursor.fetchone()[0]
+
+    await message.answer(f"👥 Пользователей: {total}\n💰 Покупок: {buyers}")
 
 # ===== ЗАПУСК =====
 async def main():
