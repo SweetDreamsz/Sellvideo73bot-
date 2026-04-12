@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 123456789  # ВСТАВЬ СВОЙ ID
+ADMIN_ID = 8314718448 # ВСТАВЬ СВОЙ ID
 
 logging.basicConfig(level=logging.INFO)
 
