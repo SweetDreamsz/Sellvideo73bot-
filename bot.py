@@ -6,11 +6,11 @@ from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = "ВСТАВЬ_ТОКЕН"
+BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 
 CHANNEL_ID = -1001234567890  # ВСТАВЬ ID КАНАЛА
-CHANNEL_LINK = "https://t.me/+xxxx"  # ПРИГЛАСИТЕЛЬНАЯ ССЫЛКА
+CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"  # ПРИГЛАСИТЕЛЬНАЯ ССЫЛКА
 
 PHOTO_CATALOG = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
 
