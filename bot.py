@@ -6,11 +6,11 @@ from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ===== НАСТРОЙКИ =====
-BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
+BOT_TOKEN = "ВСТАВЬ_ТОКЕН"
 ADMIN_ID = 8314718448
 
-CHANNEL_ID = 3491649657
-CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
+CHANNEL_ID = -1001234567890  # ВСТАВЬ ID КАНАЛА
+CHANNEL_LINK = "https://t.me/+xxxx"  # ПРИГЛАСИТЕЛЬНАЯ ССЫЛКА
 
 PHOTO_CATALOG = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
 
@@ -63,11 +63,13 @@ PRODUCTS = {
 CATALOG = list(PRODUCTS.items())
 PER_PAGE = 5
 
-# ===== ПРОВЕРКА ПОДПИСКИ =====
+# ===== ПРОВЕРКА (ПРИВАТКА FIX) =====
 async def check_sub(uid):
+    if uid == ADMIN_ID:
+        return True
     try:
         member = await bot.get_chat_member(CHANNEL_ID, uid)
-        return member.status in ["member", "creator", "administrator"]
+        return member.status != "left"
     except:
         return False
 
@@ -84,29 +86,28 @@ def menu():
 async def start(message: types.Message):
     add_user(message.from_user.id)
 
-    if not await check_sub(message.from_user.id):
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💜 Подписаться", url=CHANNEL_LINK)],
-            [InlineKeyboardButton(text="🔄 Проверить", callback_data="check")]
-        ])
-        await message.answer("💜 Подпишись на канал", reply_markup=kb)
-        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💜 Подписаться", url=CHANNEL_LINK)],
+        [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
+    ])
 
-    await message.answer("💜 Главное меню", reply_markup=menu())
+    await message.answer(
+        "💜 Подпишись на канал чтобы пользоваться ботом",
+        reply_markup=kb
+    )
 
-# ===== ПРОВЕРКА =====
-@dp.callback_query(F.data == "check")
+# ===== ПРОВЕРКА КНОПКОЙ =====
+@dp.callback_query(F.data == "check_sub")
 async def check(call: types.CallbackQuery):
     if await check_sub(call.from_user.id):
         await call.message.answer("💜 Доступ открыт", reply_markup=menu())
     else:
-        await call.answer("❌ Не подписан", show_alert=True)
+        await call.answer("❌ Подпишись на канал!", show_alert=True)
 
 # ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
 async def catalog(call: types.CallbackQuery):
     page = int(call.data.split("_")[1])
-
     start = page * PER_PAGE
     end = start + PER_PAGE
 
@@ -131,7 +132,7 @@ async def catalog(call: types.CallbackQuery):
 
     await call.message.answer_photo(
         photo=PHOTO_CATALOG,
-        caption="💜 Каталог",
+        caption="💜 Каталог товаров",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
@@ -201,7 +202,7 @@ async def my(call: types.CallbackQuery):
     if not found:
         await call.message.answer("💜 У тебя нет покупок")
 
-# ===== МЕНЮ КНОПКА =====
+# ===== МЕНЮ =====
 @dp.callback_query(F.data == "menu")
 async def back(call: types.CallbackQuery):
     await call.message.answer("💜 Главное меню", reply_markup=menu())
