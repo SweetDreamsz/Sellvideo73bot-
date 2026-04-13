@@ -13,7 +13,6 @@ ADMIN_ID = 8314718448
 CHANNEL_ID = -1003491649657
 CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 
-BOT_USERNAME = "Sellvideo73bot"
 PHOTO_CATALOG = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
 
 logging.basicConfig(level=logging.INFO)
@@ -67,7 +66,7 @@ def generate_captcha(uid):
         [InlineKeyboardButton(text=str(opt), callback_data=f"captcha_{opt}") for opt in options]
     ])
 
-    return f"🤖 {a} + {b} = ?", kb
+    return f"🤖 Реши: {a} + {b} = ?", kb
 
 # ===== ФУНКЦИИ =====
 def add_user(uid):
@@ -139,13 +138,20 @@ async def start(message: types.Message):
 
     await message.answer_photo(PHOTO_CATALOG, caption="💜 Меню", reply_markup=menu())
 
-# ===== ПОДПИСКА =====
+# ===== ПРОВЕРКА ПОДПИСКИ (ИСПРАВЛЕНО) =====
 @dp.callback_query(F.data == "check_sub")
 @cb_handler
 async def check(call):
+    if not await bot.get_chat_member(CHANNEL_ID, call.from_user.id):
+        return await call.answer("❌ Подпишись сначала", show_alert=True)
+
     set_sub_passed(call.from_user.id)
+
     text, kb = generate_captcha(call.from_user.id)
-    await call.message.edit_text(text, reply_markup=kb)
+
+    await call.message.delete()
+    await call.message.answer("✅ Подписка подтверждена")
+    await call.message.answer(text, reply_markup=kb)
 
 # ===== КАПЧА =====
 @dp.callback_query(F.data.startswith("captcha_"))
@@ -154,6 +160,8 @@ async def captcha(call):
     if int(call.data.split("_")[1]) == captcha_data.get(call.from_user.id):
         set_verified(call.from_user.id)
         await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Меню", reply_markup=menu())
+    else:
+        await call.answer("❌ Неверно", show_alert=True)
 
 # ===== БАЛАНС =====
 @dp.callback_query(F.data == "balance")
@@ -166,7 +174,8 @@ async def balance(call):
         [InlineKeyboardButton(text="🔙 Меню", callback_data="menu")]
     ])
 
-    await call.message.edit_caption(
+    await call.message.answer_photo(
+        PHOTO_CATALOG,
         caption=f"💰 Баланс: {get_balance(call.from_user.id)}⭐",
         reply_markup=kb
     )
@@ -224,13 +233,13 @@ async def catalog(call):
 
     kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
 
-    await call.message.edit_caption(caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await call.message.answer_photo(PHOTO_CATALOG, caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 # ===== МЕНЮ =====
 @dp.callback_query(F.data == "menu")
 @cb_handler
 async def menu_back(call):
-    await call.message.edit_caption(caption="💜 Меню", reply_markup=menu())
+    await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Меню", reply_markup=menu())
 
 # ===== ЗАПУСК =====
 async def main():
