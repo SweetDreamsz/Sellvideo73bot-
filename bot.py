@@ -4,7 +4,7 @@ import logging
 import random
 
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
@@ -26,6 +26,15 @@ def cb(func):
             await call.answer()
         except:
             pass
+
+        # 🔒 ВСЕГДА проверка подписки
+        if not await check_sub(call.from_user.id):
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
+                [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
+            ])
+            return await call.message.answer("❌ Подпишись на канал", reply_markup=kb)
+
         return await func(call)
     return wrapper
 
@@ -58,8 +67,9 @@ def add_user(uid, ref=None):
     conn.commit()
 
     if ref and ref != uid:
-        cur.execute("UPDATE users SET ref=ref+1, balance=balance+3 WHERE id=?", (ref,))
-        conn.commit()
+        if cur.execute("SELECT 1 FROM users WHERE id=?", (ref,)).fetchone():
+            cur.execute("UPDATE users SET ref=ref+1, balance=balance+3 WHERE id=?", (ref,))
+            conn.commit()
 
 def get(uid, field):
     return cur.execute(f"SELECT {field} FROM users WHERE id=?", (uid,)).fetchone()[0]
@@ -167,7 +177,7 @@ async def start(m: types.Message):
 
     await m.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
 
-# ===== ПРОВЕРКА =====
+# ===== ПРОВЕРКА ПОДПИСКИ =====
 @dp.callback_query(F.data == "check_sub")
 @cb
 async def check_btn(call):
@@ -191,10 +201,47 @@ async def captcha_handler(call):
     if captcha.get(uid) == answer:
         cur.execute("UPDATE users SET verified=1 WHERE id=?", (uid,))
         conn.commit()
-
         await call.message.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
     else:
         await call.answer("❌ Неверно", show_alert=True)
+
+# ===== БАЛАНС + STARS =====
+@dp.callback_query(F.data == "bal")
+@cb
+async def bal(call):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="10⭐", callback_data="donate_10"),
+         InlineKeyboardButton(text="30⭐", callback_data="donate_30")],
+        [InlineKeyboardButton(text="50⭐", callback_data="donate_50"),
+         InlineKeyboardButton(text="70⭐", callback_data="donate_70"),
+         InlineKeyboardButton(text="100⭐", callback_data="donate_100")]
+    ])
+    await call.message.answer(f"💰 Баланс: {get(call.from_user.id,'balance')}⭐", reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("donate_"))
+@cb
+async def donate(call):
+    amount = int(call.data.split("_")[1])
+
+    await bot.send_invoice(
+        chat_id=call.from_user.id,
+        title="Пополнение",
+        description=f"{amount} Stars",
+        payload=f"stars_{amount}",
+        currency="XTR",
+        prices=[LabeledPrice(label="Stars", amount=amount)],
+        provider_token=""
+    )
+
+@dp.pre_checkout_query()
+async def pre_checkout(q: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(q.id, ok=True)
+
+@dp.message(F.successful_payment)
+async def success(msg: types.Message):
+    amount = int(msg.successful_payment.invoice_payload.split("_")[1])
+    add_balance(msg.from_user.id, amount)
+    await msg.answer(f"✅ +{amount}⭐")
 
 # ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
@@ -224,46 +271,23 @@ async def catalog(call):
 @dp.callback_query(F.data.startswith("buy_"))
 @cb
 async def buy(call):
-    pid = call.data.split("_")[1]
     uid = call.from_user.id
-
+    pid = call.data.split("_")[1]
     name, price, video = PRODUCTS[pid]
 
-    if get(uid, "balance") < price:
+    if get(uid,"balance") < price:
         return await call.answer("❌ Недостаточно средств", show_alert=True)
 
-    add_balance(uid, -price)
-    add_purchase(uid, pid)
-
-    await bot.send_video(uid, video)
-
-# ===== БАЛАНС =====
-@dp.callback_query(F.data == "bal")
-@cb
-async def bal(call):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="10⭐", callback_data="add_10"),
-         InlineKeyboardButton(text="30⭐", callback_data="add_30")],
-        [InlineKeyboardButton(text="50⭐", callback_data="add_50"),
-         InlineKeyboardButton(text="70⭐", callback_data="add_70"),
-         InlineKeyboardButton(text="100⭐", callback_data="add_100")]
-    ])
-
-    await call.message.answer(f"💰 Баланс: {get(call.from_user.id,'balance')}⭐", reply_markup=kb)
-
-@dp.callback_query(F.data.startswith("add_"))
-@cb
-async def add(call):
-    amount = int(call.data.split("_")[1])
-    add_balance(call.from_user.id, amount)
-    await call.message.answer(f"✅ +{amount}⭐")
+    add_balance(uid,-price)
+    add_purchase(uid,pid)
+    await bot.send_video(uid,video)
 
 # ===== РЕФЕРАЛЫ =====
 @dp.callback_query(F.data == "refs")
 @cb
 async def refs(call):
     link = f"https://t.me/{(await bot.get_me()).username}?start={call.from_user.id}"
-    await call.message.answer(f"👥 Рефералы: {get(call.from_user.id,'ref')}\n\n{link}")
+    await call.message.answer(f"👥 Рефералы: {get(call.from_user.id,'ref')}\n{link}")
 
 # ===== ПОКУПКИ =====
 @dp.callback_query(F.data == "my")
@@ -272,28 +296,31 @@ async def my(call):
     uid = call.from_user.id
     kb = []
 
-    for pid, (name, _, _) in PRODUCTS.items():
-        if has_product(uid, pid):
-            kb.append([InlineKeyboardButton(text=name, callback_data=f"vid_{pid}")])
+    for pid,(name,_,_) in PRODUCTS.items():
+        if has_product(uid,pid):
+            kb.append([InlineKeyboardButton(text=name,callback_data=f"vid_{pid}")])
 
-    await call.message.answer("📦 Твои покупки", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
+
+    await call.message.answer("📦 Покупки",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("vid_"))
 @cb
-async def send_video(call):
+async def vid(call):
     pid = call.data.split("_")[1]
-    await bot.send_video(call.from_user.id, PRODUCTS[pid][2])
+    await bot.send_video(call.from_user.id,PRODUCTS[pid][2])
 
 # ===== ПРОФИЛЬ =====
 @dp.callback_query(F.data == "profile")
 @cb
 async def profile(call):
     uid = call.from_user.id
+    username = call.from_user.username or "нет"
 
     await call.message.answer(
         f"👤 Профиль\n\n"
         f"🆔 ID: {uid}\n"
-        f"👤 Username: @{call.from_user.username}\n"
+        f"👤 Username: @{username}\n"
         f"👥 Рефералы: {get(uid,'ref')}\n"
         f"💰 Донат: {get(uid,'donated')}⭐\n"
         f"🎬 Куплено: {len((get(uid,'purchased') or '').split(','))-1}"
@@ -304,31 +331,20 @@ async def profile(call):
 @cb
 async def admin(call):
     if call.from_user.id != ADMIN_ID:
-        return await call.answer("❌ Нет доступа", show_alert=True)
+        return await call.answer("❌", show_alert=True)
 
-    await call.message.answer("⚙️ Админка:\n/ban id\n/unban id\n/give id amount")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚫 Бан", callback_data="ban_menu")],
+        [InlineKeyboardButton(text="🔓 Разбан", callback_data="unban_menu")]
+    ])
 
-# ===== КОМАНДЫ =====
-@dp.message(F.text.startswith("/ban"))
-async def cmd_ban(m: types.Message):
-    if m.from_user.id != ADMIN_ID: return
-    uid = int(m.text.split()[1])
-    ban(uid)
-    await m.answer("забанен")
+    await call.message.answer("⚙️ Админка", reply_markup=kb)
 
-@dp.message(F.text.startswith("/unban"))
-async def cmd_unban(m):
-    if m.from_user.id != ADMIN_ID: return
-    uid = int(m.text.split()[1])
-    unban(uid)
-    await m.answer("разбанен")
-
-@dp.message(F.text.startswith("/give"))
-async def cmd_give(m):
-    if m.from_user.id != ADMIN_ID: return
-    uid, amt = map(int, m.text.split()[1:])
-    add_balance(uid, amt)
-    await m.answer("выдано")
+# ===== МЕНЮ КНОПКА =====
+@dp.callback_query(F.data == "menu")
+@cb
+async def back_menu(call):
+    await call.message.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
 
 # ===== ЗАПУСК =====
 async def main():
