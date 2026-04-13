@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ===== БД =====
+# ===== БАЗА ДАННЫХ =====
 conn = sqlite3.connect("db.db")
 cur = conn.cursor()
 
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS users(
 cur.execute("CREATE TABLE IF NOT EXISTS banned(id INTEGER PRIMARY KEY)")
 conn.commit()
 
-# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+# ===== ФУНКЦИИ БД =====
 def add_user(uid, ref=None):
     if cur.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
         return
@@ -52,7 +52,9 @@ def get_field(uid, field):
     return res[0] if res else 0
 
 def add_balance(uid, amount):
-    cur.execute("UPDATE users SET balance = balance + ?, donated = donated + ? WHERE id = ?", (amount, amount if amount > 0 else 0, uid))
+    # Увеличиваем баланс и статистику доната (если пополнение положительное)
+    donated_inc = amount if amount > 0 else 0
+    cur.execute("UPDATE users SET balance = balance + ?, donated = donated + ? WHERE id = ?", (amount, donated_inc, uid))
     conn.commit()
 
 def add_purchase(uid, pid):
@@ -94,7 +96,7 @@ PRODUCTS = {
     "12": ("BlackSatanas 3", 10, "BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
 }
 
-# ===== КЛАВИАТУРЫ =====
+# ===== МЕНЮ =====
 def main_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="cat_0")],
@@ -104,24 +106,35 @@ def main_menu_kb():
         [InlineKeyboardButton(text="⚙️ Админ", callback_data="adm")]
     ])
 
-# ===== ХЭНДЛЕРЫ =====
+# ===== ОБРАБОТЧИКИ =====
+
 @dp.message(F.text.startswith("/start"))
 async def start(m: types.Message):
-    if cur.execute("SELECT 1 FROM banned WHERE id=?", (m.from_user.id,)).fetchone(): return
-    ref = int(m.text.split()[1]) if len(m.text.split()) > 1 and m.text.split()[1].isdigit() else None
+    if cur.execute("SELECT 1 FROM banned WHERE id=?", (m.from_user.id,)).fetchone():
+        return await m.answer("🚫 Вы забанены.")
+    
+    args = m.text.split()
+    ref = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     add_user(m.from_user.id, ref)
+    
     if not await check_sub(m.from_user.id):
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)], [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]])
-        return await m.answer("Добро пожаловать! Подпишитесь на канал.", reply_markup=kb)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
+            [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
+        ])
+        return await m.answer("Добро пожаловать! Подпишитесь на канал для доступа.", reply_markup=kb)
+    
     await m.answer_photo(PHOTO, caption="💜 Главное меню", reply_markup=main_menu_kb())
 
 @dp.callback_query(F.data == "check_sub")
 async def check_btn(call: types.CallbackQuery):
     if await check_sub(call.from_user.id):
         await call.answer("✅ Доступ разрешен")
-        await call.message.delete()
+        try: await call.message.delete()
+        except: pass
         await call.message.answer_photo(PHOTO, caption="💜 Главное меню", reply_markup=main_menu_kb())
-    else: await call.answer("❌ Вы не подписаны", show_alert=True)
+    else:
+        await call.answer("❌ Вы не подписаны", show_alert=True)
 
 # КАТАЛОГ
 @dp.callback_query(F.data.startswith("cat_"))
@@ -140,7 +153,7 @@ async def catalog(call: types.CallbackQuery):
     kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")])
     await call.message.edit_caption(caption="🎬 Выберите товар:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# ВЫБОР ОПЛАТЫ
+# ВЫБОР СПОСОБА ОПЛАТЫ
 @dp.callback_query(F.data.startswith("prebuy_"))
 async def prebuy(call: types.CallbackQuery):
     pid = call.data.split("_")[1]
@@ -152,67 +165,95 @@ async def prebuy(call: types.CallbackQuery):
     ])
     await call.message.edit_caption(caption=f"🛒 Видео: {name}\n💰 Цена: {price}⭐\n\nВыберите способ оплаты:", reply_markup=kb)
 
-# ОПЛАТА СРАЗУ (ИНВОЙС)
-@dp.callback_query(F.data.startswith("pay_now_"))
-async def pay_now(call: types.CallbackQuery):
-    pid = call.data.split("_")[2]
-    name, price, _ = PRODUCTS[pid]
-    await bot.send_invoice(call.from_user.id, title=name, description="Прямая покупка видео", payload=f"item_{pid}", currency="XTR", prices=[LabeledPrice(label="Stars", amount=price)], provider_token="")
-
 # ОПЛАТА С БАЛАНСА
 @dp.callback_query(F.data.startswith("pay_bal_"))
 async def pay_bal(call: types.CallbackQuery):
     pid = call.data.split("_")[2]
     uid = call.from_user.id
     name, price, video = PRODUCTS[pid]
+    
     if get_field(uid, "balance") < price:
         return await call.answer("❌ Недостаточно звезд на балансе!", show_alert=True)
     
-    add_balance(uid, -price)
-    add_purchase(uid, pid)
-    await call.answer("✅ Успешная покупка!")
-    await call.message.answer(f"✅ Вы купили '{name}' с баланса!")
+    add_balance(uid, -price) # Снимаем деньги
+    add_purchase(uid, pid)   # Добавляем в покупки
+    await call.answer("✅ Успешно куплено!")
+    await call.message.answer(f"✅ Вы приобрели '{name}' с баланса!")
     await bot.send_video(uid, video, caption=f"🎬 {name}")
 
-# БАЛАНС (ПОПОЛНЕНИЕ)
+# ПРЯМАЯ ОПЛАТА (ЗВЕЗДЫ)
+@dp.callback_query(F.data.startswith("pay_now_"))
+async def pay_now(call: types.CallbackQuery):
+    pid = call.data.split("_")[2]
+    name, price, _ = PRODUCTS[pid]
+    await bot.send_invoice(
+        call.from_user.id,
+        title=name,
+        description=f"Покупка видео '{name}'",
+        payload=f"item_{pid}",
+        currency="XTR",
+        prices=[LabeledPrice(label="Stars", amount=price)],
+        provider_token=""
+    )
+
+# БАЛАНС
 @dp.callback_query(F.data == "wallet")
 async def wallet(call: types.CallbackQuery):
     bal = get_field(call.from_user.id, "balance")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="+50⭐", callback_data="topup_50"), InlineKeyboardButton(text="+100⭐", callback_data="topup_100")],
-        [InlineKeyboardButton(text="+500⭐", callback_data="topup_500")],
+        [InlineKeyboardButton(text="Пополнить +50⭐", callback_data="topup_50")],
+        [InlineKeyboardButton(text="Пополнить +100⭐", callback_data="topup_100")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")]
     ])
-    await call.message.edit_caption(caption=f"💰 Ваш баланс: {bal}⭐\n\nВы можете пополнить баланс для будущих покупок:", reply_markup=kb)
+    await call.message.edit_caption(caption=f"💰 Ваш баланс: {bal}⭐\n\nЗдесь вы можете пополнить счет звезд.", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("topup_"))
 async def topup(call: types.CallbackQuery):
     amount = int(call.data.split("_")[1])
-    await bot.send_invoice(call.from_user.id, title="Пополнение баланса", description=f"Покупка {amount} звезд для бота", payload=f"topup_{amount}", currency="XTR", prices=[LabeledPrice(label="Stars", amount=amount)], provider_token="")
+    await bot.send_invoice(
+        call.from_user.id,
+        title="Пополнение баланса",
+        description=f"Начисление {amount} звезд на ваш баланс в боте",
+        payload=f"topup_{amount}",
+        currency="XTR",
+        prices=[LabeledPrice(label="Stars", amount=amount)],
+        provider_token=""
+    )
 
-# ОБРАБОТКА ВСЕХ ПЛАТЕЖЕЙ
+# ПРОВЕРКА ПЛАТЕЖЕЙ
 @dp.pre_checkout_query()
-async def pre_check(q: types.PreCheckoutQuery):
+async def pre_checkout(q: types.PreCheckoutQuery):
     await bot.answer_pre_checkout_query(q.id, ok=True)
 
 @dp.message(F.successful_payment)
-async def success_pay(msg: types.Message):
+async def successful_payment(msg: types.Message):
     payload = msg.successful_payment.invoice_payload
     uid = msg.from_user.id
     
     if payload.startswith("item_"):
         pid = payload.split("_")[1]
         add_purchase(uid, pid)
-        add_balance(uid, 0) # Просто обновим donated в статистике если нужно
-        await msg.answer("✅ Оплата принята! Ваше видео:")
+        # Добавляем в статистику доната (но не на баланс, так как товар уже куплен)
+        cur.execute("UPDATE users SET donated = donated + ? WHERE id = ?", (msg.successful_payment.total_amount, uid))
+        conn.commit()
+        await msg.answer("✅ Оплата прошла! Ваше видео:")
         await bot.send_video(uid, PRODUCTS[pid][2], caption=f"🎬 {PRODUCTS[pid][0]}")
         
     elif payload.startswith("topup_"):
         amount = int(payload.split("_")[1])
         add_balance(uid, amount)
-        await msg.answer(f"✅ Баланс пополнен на {amount}⭐!")
+        await msg.answer(f"✅ Баланс успешно пополнен на {amount}⭐!")
 
 # ПРОФИЛЬ И ПОКУПКИ
+@dp.callback_query(F.data == "prof")
+async def profile(call: types.CallbackQuery):
+    uid = call.from_user.id
+    bal = get_field(uid, "balance")
+    don = get_field(uid, "donated")
+    ref = get_field(uid, "ref")
+    text = f"👤 Профиль\n\n🆔 ID: `{uid}`\n💰 Баланс: {bal}⭐\n💎 Всего доната: {don}⭐\n👥 Рефералов: {ref}"
+    await call.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")]]), parse_mode="Markdown")
+
 @dp.callback_query(F.data == "my_vids")
 async def my_vids(call: types.CallbackQuery):
     purchased = (get_field(call.from_user.id, "purchased") or "").split(",")
@@ -221,60 +262,88 @@ async def my_vids(call: types.CallbackQuery):
         if pid in purchased and pid:
             kb.append([InlineKeyboardButton(text=f"📺 {name}", callback_data=f"getv_{pid}")])
     kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")])
-    await call.message.edit_caption(caption="📦 Купленные товары:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await call.message.edit_caption(caption="📦 Список ваших покупок:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("getv_"))
-async def getv(call: types.CallbackQuery):
+async def send_purchased(call: types.CallbackQuery):
     pid = call.data.split("_")[1]
     await bot.send_video(call.from_user.id, PRODUCTS[pid][2], caption=f"🎬 {PRODUCTS[pid][0]}")
 
-@dp.callback_query(F.data == "prof")
-async def prof(call: types.CallbackQuery):
-    uid = call.from_user.id
-    text = f"👤 Профиль\n🆔 ID: {uid}\n💰 Баланс: {get_field(uid,'balance')}⭐\n💎 Всего задоначено: {get_field(uid,'donated')}⭐"
-    await call.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")]]))
-
 @dp.callback_query(F.data == "to_menu")
-async def to_menu(call: types.CallbackQuery):
+async def to_menu_handler(call: types.CallbackQuery):
     await call.answer()
     await call.message.edit_caption(caption="💜 Главное меню", reply_markup=main_menu_kb())
 
 # ===== АДМИН ПАНЕЛЬ =====
 @dp.callback_query(F.data == "adm")
-async def adm_panel(call: types.CallbackQuery):
+async def admin_panel(call: types.CallbackQuery):
     if call.from_user.id != ADMIN_ID: return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎁 Всем +100⭐", callback_data="give_all_100")],
         [InlineKeyboardButton(text="🎁 Всем +500⭐", callback_data="give_all_500")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")]
     ])
-    await call.message.edit_caption(caption="⚙️ Админка\n\nКоманды в чат:\n/give [id] [кол-во] — выдать звезды\n/ban [id] — бан\n/unban [id] — разбан", reply_markup=kb)
+    text = (
+        "⚙️ **Админ-панель**\n\n"
+        "Команды (отправлять просто в чат):\n"
+        "`/give ID СУММА` — выдать звезды\n"
+        "`/ban ID` — забанить\n"
+        "`/unban ID` — разбанить"
+    )
+    await call.message.edit_caption(caption=text, reply_markup=kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("give_all_"))
-async def give_all(call: types.CallbackQuery):
+async def give_all_btn(call: types.CallbackQuery):
     if call.from_user.id != ADMIN_ID: return
     amount = int(call.data.split("_")[2])
     cur.execute("UPDATE users SET balance = balance + ?", (amount,))
     conn.commit()
-    await call.answer(f"✅ Выдано по {amount}⭐ всем пользователям!", show_alert=True)
+    await call.answer(f"✅ Начислено по {amount}⭐ всем пользователям!", show_alert=True)
 
 @dp.message(F.text.startswith("/give"))
-async def adm_give(m: types.Message):
+async def admin_give_stars(m: types.Message):
     if m.from_user.id != ADMIN_ID: return
     try:
-        _, uid, amount = m.text.split()
-        add_balance(int(uid), int(amount))
-        await m.answer(f"✅ Выдано {amount}⭐ пользователю {uid}")
-    except: await m.answer("Ошибка. Формат: /give 12345 500")
+        parts = m.text.split()
+        target_id = int(parts[1])
+        amount = int(parts[2])
+        
+        # Проверка юзера
+        res = cur.execute("SELECT 1 FROM users WHERE id=?", (target_id,)).fetchone()
+        if not res:
+            return await m.answer(f"❌ Юзер `{target_id}` не найден в БД.")
+
+        cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, target_id))
+        conn.commit()
+        
+        await m.answer(f"✅ Успешно! Выдано {amount}⭐ пользователю `{target_id}`.")
+        try:
+            await bot.send_message(target_id, f"🎁 Админ начислил вам **{amount}⭐**!")
+        except: pass
+    except:
+        await m.answer("❌ Ошибка. Формат: `/give 1234567 500`")
 
 @dp.message(F.text.startswith("/ban"))
-async def adm_ban(m: types.Message):
+async def admin_ban_user(m: types.Message):
     if m.from_user.id != ADMIN_ID: return
-    uid = m.text.split()[1]
-    cur.execute("INSERT OR IGNORE INTO banned VALUES(?)", (uid,))
-    conn.commit()
-    await m.answer("Забанен")
+    try:
+        uid = int(m.text.split()[1])
+        cur.execute("INSERT OR IGNORE INTO banned VALUES(?)", (uid,))
+        conn.commit()
+        await m.answer(f"🚫 Юзер {uid} забанен.")
+    except: pass
 
+@dp.message(F.text.startswith("/unban"))
+async def admin_unban_user(m: types.Message):
+    if m.from_user.id != ADMIN_ID: return
+    try:
+        uid = int(m.text.split()[1])
+        cur.execute("DELETE FROM banned WHERE id=?", (uid,))
+        conn.commit()
+        await m.answer(f"✅ Юзер {uid} разбанен.")
+    except: pass
+
+# ЗАПУСК
 async def main():
     await dp.start_polling(bot)
 
