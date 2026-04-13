@@ -40,15 +40,28 @@ id INTEGER PRIMARY KEY,
 balance INTEGER DEFAULT 0,
 verified INTEGER DEFAULT 0,
 sub INTEGER DEFAULT 0,
-purchased TEXT DEFAULT ''
+purchased TEXT DEFAULT '',
+ref INTEGER DEFAULT 0,
+invited_by INTEGER
 )
 """)
 conn.commit()
 
 # ===== ФУНКЦИИ =====
-def add_user(uid):
-    cur.execute("INSERT OR IGNORE INTO users(id) VALUES(?)", (uid,))
+def add_user(uid, ref=None):
+    cur.execute("SELECT id FROM users WHERE id=?", (uid,))
+    if cur.fetchone():
+        return
+
+    cur.execute("INSERT INTO users(id, invited_by) VALUES(?,?)", (uid, ref))
     conn.commit()
+
+    if ref and ref != uid:
+        cur.execute("UPDATE users SET ref=ref+1, balance=balance+3 WHERE id=?", (ref,))
+        conn.commit()
+
+def get_refs(uid):
+    return cur.execute("SELECT ref FROM users WHERE id=?", (uid,)).fetchone()[0]
 
 def get_balance(uid):
     return cur.execute("SELECT balance FROM users WHERE id=?", (uid,)).fetchone()[0]
@@ -130,26 +143,29 @@ def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="catalog_0")],
         [InlineKeyboardButton(text="💰 Баланс", callback_data="bal")],
+        [InlineKeyboardButton(text="👥 Рефералы", callback_data="refs")],
         [InlineKeyboardButton(text="📦 Мои покупки", callback_data="my")],
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
         [InlineKeyboardButton(text="⚙️ Админ", callback_data="admin")]
     ])
 
 # ===== СТАРТ =====
-@dp.message(F.text == "/start")
+@dp.message(F.text.startswith("/start"))
 async def start(m: types.Message):
-    uid = m.from_user.id
-    add_user(uid)
+    args = m.text.split()
+    ref = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
 
-    if not is_sub(uid):
+    add_user(m.from_user.id, ref)
+
+    if not is_sub(m.from_user.id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
             [InlineKeyboardButton(text="✅ Проверить", callback_data="check")]
         ])
         return await m.answer("Подпишись на канал", reply_markup=kb)
 
-    if not is_ver(uid):
-        t, kb = gen(uid)
+    if not is_ver(m.from_user.id):
+        t, kb = gen(m.from_user.id)
         return await m.answer(t, reply_markup=kb)
 
     await m.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
@@ -164,6 +180,7 @@ async def check(call):
         return await call.answer("❌ Ты не подписан", show_alert=True)
 
     set_sub(uid)
+
     t, kb = gen(uid)
 
     await call.message.delete()
@@ -234,6 +251,16 @@ async def buy(call):
     await bot.send_video(uid, p["video"])
     await call.message.answer("✅ Куплено", reply_markup=menu())
 
+# ===== РЕФЕРАЛЫ =====
+@dp.callback_query(F.data == "refs")
+@cb
+async def refs(call):
+    link = f"https://t.me/{(await bot.get_me()).username}?start={call.from_user.id}"
+    await call.message.answer(
+        f"👥 Рефералы: {get_refs(call.from_user.id)}\n⭐ +3⭐ за каждого\n\n🔗 {link}",
+        reply_markup=menu()
+    )
+
 # ===== МОИ ПОКУПКИ =====
 @dp.callback_query(F.data == "my")
 @cb
@@ -266,12 +293,11 @@ async def admin(call):
 @dp.callback_query(F.data == "bal")
 @cb
 async def bal(call):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 50⭐", callback_data="top_50")],
-        [InlineKeyboardButton(text="🔙 Меню", callback_data="menu")]
-    ])
-
-    await call.message.answer_photo(PHOTO, caption=f"Баланс: {get_balance(call.from_user.id)}⭐", reply_markup=kb)
+    await call.message.answer_photo(
+        PHOTO,
+        caption=f"Баланс: {get_balance(call.from_user.id)}⭐",
+        reply_markup=menu()
+    )
 
 # ===== МЕНЮ =====
 @dp.callback_query(F.data == "menu")
