@@ -4,7 +4,7 @@ import logging
 import random
 
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
@@ -14,13 +14,22 @@ CHANNEL_ID = -1003491649657
 CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 
 BOT_USERNAME = "Sellvideo73bot"
-
 PHOTO_CATALOG = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# ===== ДЕКОРАТОР =====
+def cb_handler(func):
+    async def wrapper(call: types.CallbackQuery, *args, **kwargs):
+        try:
+            await call.answer()
+        except:
+            pass
+        return await func(call, *args, **kwargs)
+    return wrapper
 
 # ===== БД =====
 conn = sqlite3.connect("users.db")
@@ -30,13 +39,11 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     balance INTEGER DEFAULT 0,
-    referrer INTEGER,
     verified INTEGER DEFAULT 0,
     sub_passed INTEGER DEFAULT 0
 )
 """)
 
-cursor.execute("CREATE TABLE IF NOT EXISTS purchases (user_id INTEGER, product TEXT)")
 conn.commit()
 
 # ===== КАПЧА =====
@@ -54,21 +61,18 @@ def generate_captcha(uid):
             options.append(fake)
 
     random.shuffle(options)
-
     captcha_data[uid] = correct
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=str(opt), callback_data=f"captcha_{opt}") for opt in options]
     ])
 
-    return f"🤖 Докажи что ты человек:\n{a} + {b} = ?", kb
+    return f"🤖 {a} + {b} = ?", kb
 
 # ===== ФУНКЦИИ =====
-def add_user(uid, ref=None):
-    cursor.execute("SELECT user_id FROM users WHERE user_id=?", (uid,))
-    if cursor.fetchone() is None:
-        cursor.execute("INSERT INTO users (user_id, referrer) VALUES (?, ?)", (uid, ref))
-        conn.commit()
+def add_user(uid):
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (uid,))
+    conn.commit()
 
 def get_balance(uid):
     cursor.execute("SELECT balance FROM users WHERE user_id=?", (uid,))
@@ -94,22 +98,6 @@ def set_sub_passed(uid):
     cursor.execute("UPDATE users SET sub_passed=1 WHERE user_id=?", (uid,))
     conn.commit()
 
-def buy_product(uid, pid):
-    cursor.execute("INSERT INTO purchases VALUES (?,?)", (uid, pid))
-    conn.commit()
-
-def has_product(uid, pid):
-    cursor.execute("SELECT * FROM purchases WHERE user_id=? AND product=?", (uid, pid))
-    return cursor.fetchone()
-
-# ===== ПРОВЕРКА ПОДПИСКИ =====
-async def check_sub(user_id):
-    try:
-        member = await bot.get_chat_member(CHANNEL_ID, user_id)
-        return member.status in ["creator", "administrator", "member"]
-    except:
-        return False  # если не получилось — fallback
-
 # ===== ТОВАРЫ =====
 PRODUCTS = {
     "1": {"name": "Disable HumaNity Vol 3", "price": 50, "video": "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"},
@@ -130,30 +118,14 @@ PRODUCTS = {
 def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="catalog_0")],
-        [InlineKeyboardButton(text="📦 Покупки", callback_data="my")],
-        [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")],
-        [InlineKeyboardButton(text="👥 Рефералы", callback_data="refs")],
-        [InlineKeyboardButton(text="⚙️ Админ", callback_data="admin")]
+        [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")]
     ])
 
 # ===== СТАРТ =====
-@dp.message(F.text.startswith("/start"))
+@dp.message(F.text == "/start")
 async def start(message: types.Message):
-    args = message.text.split()
+    add_user(message.from_user.id)
 
-    ref = None
-    if len(args) > 1:
-        try:
-            ref = int(args[1])
-        except:
-            ref = None
-
-    add_user(message.from_user.id, ref)
-
-    if ref and ref != message.from_user.id:
-        add_balance(ref, 3)
-
-    # 🔒 подписка
     if not is_sub_passed(message.from_user.id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
@@ -161,96 +133,104 @@ async def start(message: types.Message):
         ])
         return await message.answer("Подпишись на канал", reply_markup=kb)
 
-    # 🤖 капча
     if not is_verified(message.from_user.id):
         text, kb = generate_captcha(message.from_user.id)
         return await message.answer(text, reply_markup=kb)
 
-    await message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
+    await message.answer_photo(PHOTO_CATALOG, caption="💜 Меню", reply_markup=menu())
 
-# ===== ПРОВЕРКА =====
+# ===== ПОДПИСКА =====
 @dp.callback_query(F.data == "check_sub")
-async def check(call: types.CallbackQuery):
-    # пробуем проверить
-    if await check_sub(call.from_user.id):
-        set_sub_passed(call.from_user.id)
-    else:
-        # fallback (для приватных каналов)
-        set_sub_passed(call.from_user.id)
-
-    await call.message.answer("✅ Доступ открыт")
-
-    if not is_verified(call.from_user.id):
-        text, kb = generate_captcha(call.from_user.id)
-        await call.message.answer(text, reply_markup=kb)
-    else:
-        await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
+@cb_handler
+async def check(call):
+    set_sub_passed(call.from_user.id)
+    text, kb = generate_captcha(call.from_user.id)
+    await call.message.edit_text(text, reply_markup=kb)
 
 # ===== КАПЧА =====
 @dp.callback_query(F.data.startswith("captcha_"))
-async def captcha_check(call: types.CallbackQuery):
-    uid = call.from_user.id
-    answer = int(call.data.split("_")[1])
+@cb_handler
+async def captcha(call):
+    if int(call.data.split("_")[1]) == captcha_data.get(call.from_user.id):
+        set_verified(call.from_user.id)
+        await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Меню", reply_markup=menu())
 
-    if answer == captcha_data.get(uid):
-        set_verified(uid)
-        await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
-    else:
-        await call.answer("❌ Неверно", show_alert=True)
+# ===== БАЛАНС =====
+@dp.callback_query(F.data == "balance")
+@cb_handler
+async def balance(call):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 10⭐", callback_data="topup_10")],
+        [InlineKeyboardButton(text="💰 50⭐", callback_data="topup_50")],
+        [InlineKeyboardButton(text="💰 100⭐", callback_data="topup_100")],
+        [InlineKeyboardButton(text="🔙 Меню", callback_data="menu")]
+    ])
 
-# ===== КАТАЛОГ =====
-@dp.callback_query(F.data.startswith("catalog"))
-async def catalog(call):
-    page = int(call.data.split("_")[1])
-    items = list(PRODUCTS.items())
+    await call.message.edit_caption(
+        caption=f"💰 Баланс: {get_balance(call.from_user.id)}⭐",
+        reply_markup=kb
+    )
 
-    start = page * 5
-    end = start + 5
+# ===== ПОПОЛНЕНИЕ =====
+@dp.callback_query(F.data.startswith("topup_"))
+@cb_handler
+async def topup(call):
+    amount = int(call.data.split("_")[1])
 
-    kb = []
-    for pid, p in items[start:end]:
-        kb.append([InlineKeyboardButton(
-            text=f"{p['name']} - {p['price']}⭐",
-            callback_data=f"buy_{pid}"
-        )])
+    await bot.send_invoice(
+        chat_id=call.from_user.id,
+        title="Пополнение",
+        description=f"{amount}⭐",
+        payload=f"topup_{amount}",
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label="Stars", amount=amount)]
+    )
 
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"catalog_{page-1}"))
-    if end < len(items):
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"catalog_{page+1}"))
+# ===== ОПЛАТА =====
+@dp.pre_checkout_query()
+async def pre_checkout(pre_checkout_q: types.PreCheckoutQuery):
+    await pre_checkout_q.answer(ok=True)
 
-    kb.append(nav)
-    kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
+@dp.message(F.successful_payment)
+async def success_payment(message: types.Message):
+    payload = message.successful_payment.invoice_payload
 
-    await call.message.answer_photo(PHOTO_CATALOG, caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    if payload.startswith("topup_"):
+        amount = int(payload.split("_")[1])
+        add_balance(message.from_user.id, amount)
+        await message.answer(f"✅ Баланс пополнен на {amount}⭐")
 
 # ===== ПОКУПКА =====
 @dp.callback_query(F.data.startswith("buy_"))
+@cb_handler
 async def buy(call):
     pid = call.data.split("_")[1]
     p = PRODUCTS[pid]
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💰 Купить за {p['price']}⭐", callback_data=f"pay_{pid}")]
-    ])
-
-    await call.message.answer(f"{p['name']}\nЦена: {p['price']}⭐", reply_markup=kb)
-
-# ===== ОПЛАТА =====
-@dp.callback_query(F.data.startswith("pay_"))
-async def pay(call):
-    pid = call.data.split("_")[1]
-    p = PRODUCTS[pid]
-
     if get_balance(call.from_user.id) < p["price"]:
-        return await call.answer("❌ Недостаточно средств")
+        return await call.answer("❌ Недостаточно средств", show_alert=True)
 
     add_balance(call.from_user.id, -p["price"])
-    buy_product(call.from_user.id, pid)
-
     await bot.send_video(call.from_user.id, p["video"])
     await call.message.answer("✅ Куплено", reply_markup=menu())
+
+# ===== КАТАЛОГ =====
+@dp.callback_query(F.data.startswith("catalog"))
+@cb_handler
+async def catalog(call):
+    kb = [[InlineKeyboardButton(text=f"{p['name']} - {p['price']}⭐", callback_data=f"buy_{pid}")]
+          for pid, p in PRODUCTS.items()]
+
+    kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
+
+    await call.message.edit_caption(caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+# ===== МЕНЮ =====
+@dp.callback_query(F.data == "menu")
+@cb_handler
+async def menu_back(call):
+    await call.message.edit_caption(caption="💜 Меню", reply_markup=menu())
 
 # ===== ЗАПУСК =====
 async def main():
