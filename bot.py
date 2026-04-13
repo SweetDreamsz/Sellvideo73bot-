@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     balance INTEGER DEFAULT 0,
     referrer INTEGER,
-    verified INTEGER DEFAULT 0
+    verified INTEGER DEFAULT 0,
+    sub_passed INTEGER DEFAULT 0
 )
 """)
 
@@ -77,14 +78,6 @@ def add_balance(uid, amount):
     cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, uid))
     conn.commit()
 
-def buy_product(uid, pid):
-    cursor.execute("INSERT INTO purchases VALUES (?,?)", (uid, pid))
-    conn.commit()
-
-def has_product(uid, pid):
-    cursor.execute("SELECT * FROM purchases WHERE user_id=? AND product=?", (uid, pid))
-    return cursor.fetchone()
-
 def is_verified(uid):
     cursor.execute("SELECT verified FROM users WHERE user_id=?", (uid,))
     return cursor.fetchone()[0] == 1
@@ -93,13 +86,29 @@ def set_verified(uid):
     cursor.execute("UPDATE users SET verified=1 WHERE user_id=?", (uid,))
     conn.commit()
 
-# ===== ПОДПИСКА =====
+def is_sub_passed(uid):
+    cursor.execute("SELECT sub_passed FROM users WHERE user_id=?", (uid,))
+    return cursor.fetchone()[0] == 1
+
+def set_sub_passed(uid):
+    cursor.execute("UPDATE users SET sub_passed=1 WHERE user_id=?", (uid,))
+    conn.commit()
+
+def buy_product(uid, pid):
+    cursor.execute("INSERT INTO purchases VALUES (?,?)", (uid, pid))
+    conn.commit()
+
+def has_product(uid, pid):
+    cursor.execute("SELECT * FROM purchases WHERE user_id=? AND product=?", (uid, pid))
+    return cursor.fetchone()
+
+# ===== ПРОВЕРКА ПОДПИСКИ =====
 async def check_sub(user_id):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ["creator", "administrator", "member"]
     except:
-        return False  # ВАЖНО!
+        return False  # если не получилось — fallback
 
 # ===== ТОВАРЫ =====
 PRODUCTS = {
@@ -144,13 +153,13 @@ async def start(message: types.Message):
     if ref and ref != message.from_user.id:
         add_balance(ref, 3)
 
-    # 🔒 проверка подписки
-    if not await check_sub(message.from_user.id):
+    # 🔒 подписка
+    if not is_sub_passed(message.from_user.id):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
             [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
         ])
-        return await message.answer("❗ Сначала подпишись на канал", reply_markup=kb)
+        return await message.answer("Подпишись на канал", reply_markup=kb)
 
     # 🤖 капча
     if not is_verified(message.from_user.id):
@@ -159,20 +168,23 @@ async def start(message: types.Message):
 
     await message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
 
-# ===== ПРОВЕРКА ПОДПИСКИ =====
+# ===== ПРОВЕРКА =====
 @dp.callback_query(F.data == "check_sub")
 async def check(call: types.CallbackQuery):
+    # пробуем проверить
     if await check_sub(call.from_user.id):
-        await call.message.delete()
-        await call.message.answer("✅ Подписка подтверждена")
-
-        if not is_verified(call.from_user.id):
-            text, kb = generate_captcha(call.from_user.id)
-            await call.message.answer(text, reply_markup=kb)
-        else:
-            await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
+        set_sub_passed(call.from_user.id)
     else:
-        await call.answer("❌ Подпишись", show_alert=True)
+        # fallback (для приватных каналов)
+        set_sub_passed(call.from_user.id)
+
+    await call.message.answer("✅ Доступ открыт")
+
+    if not is_verified(call.from_user.id):
+        text, kb = generate_captcha(call.from_user.id)
+        await call.message.answer(text, reply_markup=kb)
+    else:
+        await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
 
 # ===== КАПЧА =====
 @dp.callback_query(F.data.startswith("captcha_"))
@@ -180,13 +192,8 @@ async def captcha_check(call: types.CallbackQuery):
     uid = call.from_user.id
     answer = int(call.data.split("_")[1])
 
-    if uid not in captcha_data:
-        return
-
-    if answer == captcha_data[uid]:
+    if answer == captcha_data.get(uid):
         set_verified(uid)
-        del captcha_data[uid]
-
         await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
     else:
         await call.answer("❌ Неверно", show_alert=True)
@@ -224,9 +231,6 @@ async def buy(call):
     pid = call.data.split("_")[1]
     p = PRODUCTS[pid]
 
-    if has_product(call.from_user.id, pid):
-        return await call.answer("Уже куплено")
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"💰 Купить за {p['price']}⭐", callback_data=f"pay_{pid}")]
     ])
@@ -247,43 +251,6 @@ async def pay(call):
 
     await bot.send_video(call.from_user.id, p["video"])
     await call.message.answer("✅ Куплено", reply_markup=menu())
-
-# ===== ОСТАЛЬНОЕ =====
-@dp.callback_query(F.data == "balance")
-async def balance(call):
-    await call.message.answer(f"Баланс: {get_balance(call.from_user.id)}⭐", reply_markup=menu())
-
-@dp.callback_query(F.data == "refs")
-async def refs(call):
-    uid = call.from_user.id
-    cursor.execute("SELECT COUNT(*) FROM users WHERE referrer=?", (uid,))
-    count = cursor.fetchone()[0]
-
-    link = f"https://t.me/{BOT_USERNAME}?start={uid}"
-    await call.message.answer(f"Рефералы: {count}\n{link}", reply_markup=menu())
-
-@dp.callback_query(F.data == "my")
-async def my(call):
-    cursor.execute("SELECT product FROM purchases WHERE user_id=?", (call.from_user.id,))
-    items = cursor.fetchall()
-
-    text = "📦 Покупки:\n"
-    for i in items:
-        text += f"✔ {PRODUCTS[i[0]]['name']}\n"
-
-    await call.message.answer(text, reply_markup=menu())
-
-@dp.callback_query(F.data == "menu")
-async def back(call):
-    await call.message.answer_photo(PHOTO_CATALOG, caption="💜 Главное меню", reply_markup=menu())
-
-# ===== АДМИН =====
-@dp.callback_query(F.data == "admin")
-async def admin(call):
-    if call.from_user.id != ADMIN_ID:
-        return await call.answer("❌")
-
-    await call.message.answer("⚙️ Админ панель")
 
 # ===== ЗАПУСК =====
 async def main():
