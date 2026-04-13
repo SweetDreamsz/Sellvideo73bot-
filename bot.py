@@ -1,7 +1,6 @@
 import asyncio
 import sqlite3
 import logging
-import random
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
@@ -71,43 +70,29 @@ async def check_sub(uid):
     except:
         return False
 
-# ===== ДЕКОРАТОР ПРОВЕРКИ (ИСПРАВЛЕН) =====
-def check_access(func):
-    async def wrapper(event, *args, **kwargs):
-        uid = event.from_user.id
+# ===== ПРОВЕРКА ДОСТУПА (БЕЗ ДЕКОРАТОРОВ) =====
+async def check_access(call: types.CallbackQuery) -> bool:
+    uid = call.from_user.id
+    
+    if is_banned(uid):
+        await call.answer("🚫 Доступ заблокирован", show_alert=True)
+        return False
+
+    if not await check_sub(uid):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
+            [InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_sub")]
+        ])
+        await call.answer("❌ Подпишитесь на канал!")
+        await call.message.answer("❌ Чтобы пользоваться ботом, подпишись на наш канал!", reply_markup=kb)
+        return False
+
+    try:
+        await call.answer() # Убираем эффект "зависшей кнопки"
+    except:
+        pass
         
-        # 1. Проверка бана
-        if is_banned(uid):
-            if isinstance(event, types.CallbackQuery):
-                await event.answer("🚫 Доступ заблокирован", show_alert=True)
-            return
-
-        # 2. Проверка подписки
-        if not await check_sub(uid):
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
-                [InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_sub")]
-            ])
-            msg_text = "❌ Чтобы пользоваться ботом, подпишись на наш канал!"
-            
-            if isinstance(event, types.CallbackQuery):
-                await event.answer("❌ Подпишитесь!")
-                # Если сообщение уже содержит этот текст, не шлем дубль
-                if event.message.caption != msg_text:
-                    await event.message.answer(msg_text, reply_markup=kb)
-            else:
-                await event.answer(msg_text, reply_markup=kb)
-            return
-
-        # 3. Ответ на CallbackQuery, чтобы кнопка не "висела"
-        if isinstance(event, types.CallbackQuery):
-            try:
-                await event.answer()
-            except:
-                pass
-
-        return await func(event, *args, **kwargs)
-    return wrapper
+    return True
 
 # ===== ТОВАРЫ =====
 PRODUCTS = {
@@ -136,9 +121,11 @@ def main_menu_kb():
     ])
 
 # ===== ОБРАБОТЧИКИ =====
-
 @dp.message(F.text.startswith("/start"))
 async def start_cmd(m: types.Message):
+    if is_banned(m.from_user.id):
+        return await m.answer("🚫 Доступ заблокирован")
+
     args = m.text.split()
     ref = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     add_user(m.from_user.id, ref)
@@ -156,14 +143,17 @@ async def start_cmd(m: types.Message):
 async def check_sub_btn(call: types.CallbackQuery):
     if await check_sub(call.from_user.id):
         await call.answer("✅ Подписка подтверждена!", show_alert=True)
-        await call.message.delete()
+        try:
+            await call.message.delete()
+        except: pass
         await call.message.answer_photo(PHOTO, caption="💜 Главное меню", reply_markup=main_menu_kb())
     else:
         await call.answer("❌ Вы всё еще не подписаны", show_alert=True)
 
 @dp.callback_query(F.data.startswith("catalog_"))
-@check_access
 async def catalog_handler(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     page = int(call.data.split("_")[1])
     items = list(PRODUCTS.items())[page*5:(page+1)*5]
     kb = []
@@ -179,8 +169,9 @@ async def catalog_handler(call: types.CallbackQuery):
     await call.message.edit_caption(caption="🎬 Выберите видео для покупки:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("buy_direct_"))
-@check_access
 async def process_buy(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     pid = call.data.split("_")[2]
     name, price, video = PRODUCTS[pid]
     
@@ -210,8 +201,9 @@ async def success_pay(msg: types.Message):
         await bot.send_video(msg.from_user.id, video, caption=f"🎬 {name}")
 
 @dp.callback_query(F.data == "my_purchases")
-@check_access
 async def my_purchases_handler(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     uid = call.from_user.id
     purchased = (get_field(uid, "purchased") or "").split(",")
     kb = []
@@ -226,39 +218,43 @@ async def my_purchases_handler(call: types.CallbackQuery):
     await call.message.edit_caption(caption="📦 Ваши купленные видео:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("get_vid_"))
-@check_access
 async def show_purchased_vid(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     pid = call.data.split("_")[2]
     await bot.send_video(call.from_user.id, PRODUCTS[pid][2], caption=f"🎬 {PRODUCTS[pid][0]}")
 
 @dp.callback_query(F.data == "refs")
-@check_access
 async def refs_handler(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     me = await bot.get_me()
     link = f"https://t.me/{me.username}?start={call.from_user.id}"
     text = f"👥 Рефералы: {get_field(call.from_user.id,'ref')}\n\nТвоя ссылка:\n{link}"
     await call.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Меню", callback_data="back_to_menu")]]))
 
 @dp.callback_query(F.data == "profile")
-@check_access
 async def profile_handler(call: types.CallbackQuery):
+    if not await check_access(call): return
+
     uid = call.from_user.id
-    username = call.from_user.username or "none"
+    username = call.from_user.username or "нет"
     p_count = len([p for p in (get_field(uid, "purchased") or "").split(",") if p])
     text = (f"👤 Профиль\n\n🆔 ID: {uid}\n👤 Юзер: @{username}\n💰 Донат: {get_field(uid,'donated')}⭐\n🎬 Куплено: {p_count}")
     await call.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Меню", callback_data="back_to_menu")]]))
 
 @dp.callback_query(F.data == "back_to_menu")
-@check_access
 async def back_menu(call: types.CallbackQuery):
+    if not await check_access(call): return
     await call.message.edit_caption(caption="💜 Главное меню", reply_markup=main_menu_kb())
 
-# ===== АДМИН ПАНЕЛЬ (БЕЗ ДЕКОРАТОРА ЧТОБЫ ВСЕГДА МОГЛИ ЗАЙТИ) =====
+# ===== АДМИН ПАНЕЛЬ =====
 @dp.callback_query(F.data == "admin_panel")
 async def admin_handler(call: types.CallbackQuery):
     if call.from_user.id != ADMIN_ID:
         return await call.answer("❌ У вас нет прав", show_alert=True)
-    await call.answer()
+    try: await call.answer()
+    except: pass
     await call.message.edit_caption(caption="⚙️ Админка\n\nКоманды:\n/ban id\n/unban id", 
                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Меню", callback_data="back_to_menu")]]))
 
