@@ -8,6 +8,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPri
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
+ADMIN_ID = 8314718448
+
 CHANNEL_ID = -1003491649657
 CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 
@@ -37,7 +39,8 @@ CREATE TABLE IF NOT EXISTS users(
 id INTEGER PRIMARY KEY,
 balance INTEGER DEFAULT 0,
 verified INTEGER DEFAULT 0,
-sub INTEGER DEFAULT 0
+sub INTEGER DEFAULT 0,
+purchased TEXT DEFAULT ''
 )
 """)
 conn.commit()
@@ -68,7 +71,15 @@ def set_ver(uid):
 def is_ver(uid):
     return cur.execute("SELECT verified FROM users WHERE id=?", (uid,)).fetchone()[0]
 
-# ===== ПРОВЕРКА ПОДПИСКИ (РАБОТАЕТ) =====
+def add_purchase(uid, pid):
+    cur.execute("UPDATE users SET purchased = purchased || ? WHERE id=?", (pid+",", uid))
+    conn.commit()
+
+def has_product(uid, pid):
+    res = cur.execute("SELECT purchased FROM users WHERE id=?", (uid,)).fetchone()
+    return res and pid in (res[0] or "")
+
+# ===== ПРОВЕРКА ПОДПИСКИ =====
 async def check_sub(user_id):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
@@ -98,7 +109,7 @@ def gen(uid):
 
     return f"🤖 {a}+{b}=?", kb
 
-# ===== ТОВАРЫ (ВСЕ 12) =====
+# ===== ТОВАРЫ =====
 PRODUCTS = {
     "1": {"name": "Disable HumaNity Vol 3", "price": 50, "video": "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"},
     "2": {"name": "S.A.C necrophiliA", "price": 100, "video": "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"},
@@ -118,7 +129,10 @@ PRODUCTS = {
 def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="catalog_0")],
-        [InlineKeyboardButton(text="💰 Баланс", callback_data="bal")]
+        [InlineKeyboardButton(text="💰 Баланс", callback_data="bal")],
+        [InlineKeyboardButton(text="📦 Мои покупки", callback_data="my")],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="⚙️ Админ", callback_data="admin")]
     ])
 
 # ===== СТАРТ =====
@@ -140,7 +154,7 @@ async def start(m: types.Message):
 
     await m.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
 
-# ===== ПРОВЕРКА (ФИКС) =====
+# ===== ПРОВЕРКА =====
 @dp.callback_query(F.data == "check")
 @cb
 async def check(call):
@@ -150,7 +164,6 @@ async def check(call):
         return await call.answer("❌ Ты не подписан", show_alert=True)
 
     set_sub(uid)
-
     t, kb = gen(uid)
 
     await call.message.delete()
@@ -170,7 +183,7 @@ async def cap(call):
     else:
         await call.answer("❌ Неверно", show_alert=True)
 
-# ===== КАТАЛОГ (С ПАГИНАЦИЕЙ) =====
+# ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
 @cb
 async def catalog(call):
@@ -199,11 +212,7 @@ async def catalog(call):
 
     kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
 
-    await call.message.answer_photo(
-        PHOTO,
-        caption="🎬 Каталог",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
+    await call.message.answer_photo(PHOTO, caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 # ===== ПОКУПКА =====
 @dp.callback_query(F.data.startswith("buy_"))
@@ -213,57 +222,56 @@ async def buy(call):
     pid = call.data.split("_")[1]
     p = PRODUCTS[pid]
 
+    if has_product(uid, pid):
+        return await call.answer("Уже куплено", show_alert=True)
+
     if get_balance(uid) < p["price"]:
         return await call.answer("❌ Недостаточно средств", show_alert=True)
 
     add_balance(uid, -p["price"])
+    add_purchase(uid, pid)
 
     await bot.send_video(uid, p["video"])
     await call.message.answer("✅ Куплено", reply_markup=menu())
+
+# ===== МОИ ПОКУПКИ =====
+@dp.callback_query(F.data == "my")
+@cb
+async def my(call):
+    uid = call.from_user.id
+    text = "📦 Покупки:\n"
+
+    for pid, p in PRODUCTS.items():
+        if has_product(uid, pid):
+            text += f"✔ {p['name']}\n"
+
+    await call.message.answer(text, reply_markup=menu())
+
+# ===== ПРОФИЛЬ =====
+@dp.callback_query(F.data == "profile")
+@cb
+async def profile(call):
+    await call.message.answer(f"👤 ID: {call.from_user.id}", reply_markup=menu())
+
+# ===== АДМИН =====
+@dp.callback_query(F.data == "admin")
+@cb
+async def admin(call):
+    if call.from_user.id != ADMIN_ID:
+        return await call.answer("❌ Нет доступа", show_alert=True)
+
+    await call.message.answer("⚙️ Админ панель")
 
 # ===== БАЛАНС =====
 @dp.callback_query(F.data == "bal")
 @cb
 async def bal(call):
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 10⭐", callback_data="top_10")],
         [InlineKeyboardButton(text="💰 50⭐", callback_data="top_50")],
-        [InlineKeyboardButton(text="💰 100⭐", callback_data="top_100")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="menu")]
     ])
 
-    await call.message.answer_photo(
-        PHOTO,
-        caption=f"💰 Баланс: {get_balance(call.from_user.id)}⭐",
-        reply_markup=kb
-    )
-
-# ===== ПОПОЛНЕНИЕ =====
-@dp.callback_query(F.data.startswith("top_"))
-@cb
-async def top(call):
-    amount = int(call.data.split("_")[1])
-
-    await bot.send_invoice(
-        call.from_user.id,
-        title="Пополнение",
-        description=f"{amount}⭐",
-        payload=f"top_{amount}",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Stars", amount=amount)]
-    )
-
-# ===== ОПЛАТА =====
-@dp.pre_checkout_query()
-async def pc(q):
-    await q.answer(ok=True)
-
-@dp.message(F.successful_payment)
-async def pay(m: types.Message):
-    amount = int(m.successful_payment.invoice_payload.split("_")[1])
-    add_balance(m.from_user.id, amount)
-    await m.answer("✅ Баланс пополнен")
+    await call.message.answer_photo(PHOTO, caption=f"Баланс: {get_balance(call.from_user.id)}⭐", reply_markup=kb)
 
 # ===== МЕНЮ =====
 @dp.callback_query(F.data == "menu")
