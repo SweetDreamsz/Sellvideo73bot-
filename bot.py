@@ -6,7 +6,6 @@ import random
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 
@@ -47,12 +46,7 @@ invited_by INTEGER
 )
 """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS banned(
-id INTEGER PRIMARY KEY
-)
-""")
-
+cur.execute("CREATE TABLE IF NOT EXISTS banned(id INTEGER PRIMARY KEY)")
 conn.commit()
 
 # ===== ФУНКЦИИ =====
@@ -104,202 +98,237 @@ async def check_sub(uid):
 captcha = {}
 
 def gen(uid):
-    a,b = random.randint(1,9),random.randint(1,9)
-    ans = a+b
-    captcha[uid]=ans
+    a, b = random.randint(1,9), random.randint(1,9)
+    ans = a + b
+    captcha[uid] = ans
 
-    opts=[ans]
-    while len(opts)<4:
-        x=random.randint(2,20)
-        if x not in opts:
-            opts.append(x)
-    random.shuffle(opts)
+    options = [ans]
+    while len(options) < 4:
+        x = random.randint(2,20)
+        if x not in options:
+            options.append(x)
 
-    kb=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=str(i),callback_data=f"cap_{i}") for i in opts]
+    random.shuffle(options)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=str(i), callback_data=f"cap_{i}") for i in options]
     ])
-    return f"{a}+{b}=?",kb
+
+    return f"🤖 {a}+{b}=?", kb
 
 # ===== ТОВАРЫ =====
-PRODUCTS = {str(i+1):p for i,p in enumerate([
-("Disable HumaNity Vol 3",50,"BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"),
-("S.A.C necrophiliA",100,"BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"),
-("The End Of HelL",45,"BAACAgUAAxkBAANmaduMbyjGQ4cPphU85n0NOcPNJ60AArcMAAKu-JFVUD19QiuWxTo7BA"),
-("The End of hell 2",45,"BAACAgUAAxkBAANladuMb11VN-uGasCiGP6vt38vP4UAAp4MAAKu-JFVx6SiDaJaGqA7BA"),
-("B0dy Farm",60,"BAACAgEAAxkBAANraduMsU2NUtoGAhpIkJGw1cL-MPwAAokEAAIaKmBHM0F7wQoKeu87BA"),
-("Smashed B0dles",55,"BAACAgUAAxkBAANqaduMsTsl5Pi1Dadmx6QEJzEwk7gAAsgMAAJqushVfatS8S3wZYE7BA"),
-("Death Day 3",70,"BAACAgQAAxkBAANvaduM4m5Isr3wNh5m3ammTYlndT8AAk4VAAIM-xlRJWAqfikUixg7BA"),
-("Death Day 5",75,"BAACAgIAAxkBAANwaduM4iwlbzWNjsavL6oXmBiC03EAAjhZAAJu_glKmP3N9zjiDjs7BA"),
-("Red jacket",100,"BAACAgIAAxkBAAN0aduNExMrapqDLvNnlIK12nCAwKwAAmGWAAJx91lKv5ZmNxMimIY7BA"),
-("Supremacy Mixtrape",80,"BAACAgIAAxkBAAN3aduNNfepzoty7tb4FLAW5z3qGCAAApCOAAKgCzBJuVlq2HLhUv07BA"),
-("PrinFul Vol 3",20,"BAACAgIAAxkBAAN6aduNXt7hli2oJIUhviWQCH7zsjIAAiONAAKgCzBJoEy_zN75qMg7BA"),
-("BlackSatanas 3",10,"BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
-])}
+PRODUCTS = {
+    "1": ("Disable HumaNity Vol 3",50,"BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"),
+    "2": ("S.A.C necrophiliA",100,"BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"),
+    "3": ("The End Of HelL",45,"BAACAgUAAxkBAANmaduMbyjGQ4cPphU85n0NOcPNJ60AArcMAAKu-JFVUD19QiuWxTo7BA"),
+    "4": ("The End of hell 2",45,"BAACAgUAAxkBAANladuMb11VN-uGasCiGP6vt38vP4UAAp4MAAKu-JFVx6SiDaJaGqA7BA"),
+    "5": ("B0dy Farm",60,"BAACAgEAAxkBAANraduMsU2NUtoGAhpIkJGw1cL-MPwAAokEAAIaKmBHM0F7wQoKeu87BA"),
+    "6": ("Smashed B0dles",55,"BAACAgUAAxkBAANqaduMsTsl5Pi1Dadmx6QEJzEwk7gAAsgMAAJqushVfatS8S3wZYE7BA"),
+    "7": ("Death Day 3",70,"BAACAgQAAxkBAANvaduM4m5Isr3wNh5m3ammTYlndT8AAk4VAAIM-xlRJWAqfikUixg7BA"),
+    "8": ("Death Day 5",75,"BAACAgIAAxkBAANwaduM4iwlbzWNjsavL6oXmBiC03EAAjhZAAJu_glKmP3N9zjiDjs7BA"),
+    "9": ("Red jacket",100,"BAACAgIAAxkBAAN0aduNExMrapqDLvNnlIK12nCAwKwAAmGWAAJx91lKv5ZmNxMimIY7BA"),
+    "10": ("Supremacy Mixtrape",80,"BAACAgIAAxkBAAN3aduNNfepzoty7tb4FLAW5z3qGCAAApCOAAKgCzBJuVlq2HLhUv07BA"),
+    "11": ("PrinFul Vol 3",20,"BAACAgIAAxkBAAN6aduNXt7hli2oJIUhviWQCH7zsjIAAiONAAKgCzBJoEy_zN75qMg7BA"),
+    "12": ("BlackSatanas 3",10,"BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
+}
 
 # ===== МЕНЮ =====
 def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎬 Каталог",callback_data="catalog_0")],
-        [InlineKeyboardButton(text="💰 Баланс",callback_data="bal")],
-        [InlineKeyboardButton(text="👥 Рефералы",callback_data="refs")],
-        [InlineKeyboardButton(text="📦 Покупки",callback_data="my")],
-        [InlineKeyboardButton(text="👤 Профиль",callback_data="profile")],
-        [InlineKeyboardButton(text="⚙️ Админ",callback_data="admin")]
+        [InlineKeyboardButton(text="🎬 Каталог", callback_data="catalog_0")],
+        [InlineKeyboardButton(text="💰 Баланс", callback_data="bal")],
+        [InlineKeyboardButton(text="👥 Рефералы", callback_data="refs")],
+        [InlineKeyboardButton(text="📦 Покупки", callback_data="my")],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="⚙️ Админ", callback_data="admin")]
     ])
 
 # ===== СТАРТ =====
 @dp.message(F.text.startswith("/start"))
 async def start(m: types.Message):
     if is_banned(m.from_user.id):
-        return await m.answer("🚫 Забанен")
+        return await m.answer("🚫 Ты забанен")
 
-    args=m.text.split()
-    ref=int(args[1]) if len(args)>1 and args[1].isdigit() else None
+    args = m.text.split()
+    ref = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
 
-    add_user(m.from_user.id,ref)
+    add_user(m.from_user.id, ref)
 
     if not await check_sub(m.from_user.id):
-        kb=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Подписаться",url=CHANNEL_LINK)],
-            [InlineKeyboardButton(text="Проверить",callback_data="check")]
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Подписаться", url=CHANNEL_LINK)],
+            [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
         ])
-        return await m.answer("Подпишись",reply_markup=kb)
+        return await m.answer("Подпишись на канал!", reply_markup=kb)
 
-    if not get(m.from_user.id,"verified"):
-        t,kb=gen(m.from_user.id)
-        return await m.answer(t,reply_markup=kb)
+    if not get(m.from_user.id, "verified"):
+        text, kb = gen(m.from_user.id)
+        return await m.answer(text, reply_markup=kb)
 
-    await m.answer_photo(PHOTO,caption="Меню",reply_markup=menu())
+    await m.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
 
 # ===== ПРОВЕРКА =====
-@dp.callback_query(F.data=="check")
+@dp.callback_query(F.data == "check_sub")
 @cb
-async def check(call):
+async def check_btn(call):
     if not await check_sub(call.from_user.id):
-        return await call.answer("Не подписан",show_alert=True)
+        return await call.answer("❌ Не подписан", show_alert=True)
 
     cur.execute("UPDATE users SET sub=1 WHERE id=?", (call.from_user.id,))
     conn.commit()
 
-    t,kb=gen(call.from_user.id)
-    await call.message.answer(t,reply_markup=kb)
+    text, kb = gen(call.from_user.id)
+    await call.message.answer("✅ Подписка подтверждена")
+    await call.message.answer(text, reply_markup=kb)
 
 # ===== КАПЧА =====
 @dp.callback_query(F.data.startswith("cap_"))
 @cb
-async def cap(call):
-    ans=int(call.data.split("_")[1])
-    if ans==captcha.get(call.from_user.id):
-        cur.execute("UPDATE users SET verified=1 WHERE id=?", (call.from_user.id,))
+async def captcha_handler(call):
+    uid = call.from_user.id
+    answer = int(call.data.split("_")[1])
+
+    if captcha.get(uid) == answer:
+        cur.execute("UPDATE users SET verified=1 WHERE id=?", (uid,))
         conn.commit()
-        await call.message.answer_photo(PHOTO,caption="Меню",reply_markup=menu())
+
+        await call.message.answer_photo(PHOTO, caption="💜 Меню", reply_markup=menu())
     else:
-        await call.answer("Ошибка",show_alert=True)
+        await call.answer("❌ Неверно", show_alert=True)
 
 # ===== КАТАЛОГ =====
 @dp.callback_query(F.data.startswith("catalog"))
 @cb
 async def catalog(call):
-    page=int(call.data.split("_")[1])
-    items=list(PRODUCTS.items())[page*5:(page+1)*5]
+    page = int(call.data.split("_")[1])
+    items = list(PRODUCTS.items())[page*5:(page+1)*5]
 
-    kb=[[InlineKeyboardButton(text=f"{p[0]} {p[1]}⭐",callback_data=f"buy_{pid}")]
-        for pid,(p[0],p[1],_) in PRODUCTS.items()]
+    kb = []
+    for pid, (name, price, _) in items:
+        kb.append([InlineKeyboardButton(text=f"{name} - {price}⭐", callback_data=f"buy_{pid}")])
 
-    kb=[]
-    for pid,p in items:
-        kb.append([InlineKeyboardButton(text=f"{p[0]} {p[1]}⭐",callback_data=f"buy_{pid}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"catalog_{page-1}"))
+    if (page+1)*5 < len(PRODUCTS):
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"catalog_{page+1}"))
 
-    nav=[]
-    if page>0:
-        nav.append(InlineKeyboardButton(text="⬅️",callback_data=f"catalog_{page-1}"))
-    if (page+1)*5<len(PRODUCTS):
-        nav.append(InlineKeyboardButton(text="➡️",callback_data=f"catalog_{page+1}"))
     if nav:
         kb.append(nav)
 
-    kb.append([InlineKeyboardButton(text="Меню",callback_data="menu")])
+    kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="menu")])
 
-    await call.message.answer_photo(PHOTO,caption="Каталог",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await call.message.answer_photo(PHOTO, caption="🎬 Каталог", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 # ===== ПОКУПКА =====
 @dp.callback_query(F.data.startswith("buy_"))
 @cb
 async def buy(call):
-    pid=call.data.split("_")[1]
-    uid=call.from_user.id
-    name,price,vid=PRODUCTS[pid]
+    pid = call.data.split("_")[1]
+    uid = call.from_user.id
 
-    if get(uid,"balance")<price:
-        return await call.answer("Нет денег",show_alert=True)
+    name, price, video = PRODUCTS[pid]
 
-    add_balance(uid,-price)
-    add_purchase(uid,pid)
+    if get(uid, "balance") < price:
+        return await call.answer("❌ Недостаточно средств", show_alert=True)
 
-    await bot.send_video(uid,vid)
+    add_balance(uid, -price)
+    add_purchase(uid, pid)
+
+    await bot.send_video(uid, video)
 
 # ===== БАЛАНС =====
-@dp.callback_query(F.data=="bal")
+@dp.callback_query(F.data == "bal")
 @cb
 async def bal(call):
-    kb=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{x}⭐",callback_data=f"add_{x}") for x in [10,30,50]],
-        [InlineKeyboardButton(text=f"{x}⭐",callback_data=f"add_{x}") for x in [70,100]]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="10⭐", callback_data="add_10"),
+         InlineKeyboardButton(text="30⭐", callback_data="add_30")],
+        [InlineKeyboardButton(text="50⭐", callback_data="add_50"),
+         InlineKeyboardButton(text="70⭐", callback_data="add_70"),
+         InlineKeyboardButton(text="100⭐", callback_data="add_100")]
     ])
-    await call.message.answer(f"Баланс: {get(call.from_user.id,'balance')}⭐",reply_markup=kb)
+
+    await call.message.answer(f"💰 Баланс: {get(call.from_user.id,'balance')}⭐", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("add_"))
 @cb
 async def add(call):
-    x=int(call.data.split("_")[1])
-    add_balance(call.from_user.id,x)
-    await call.message.answer(f"+{x}⭐")
+    amount = int(call.data.split("_")[1])
+    add_balance(call.from_user.id, amount)
+    await call.message.answer(f"✅ +{amount}⭐")
 
-# ===== РЕФЫ =====
-@dp.callback_query(F.data=="refs")
+# ===== РЕФЕРАЛЫ =====
+@dp.callback_query(F.data == "refs")
 @cb
 async def refs(call):
-    link=f"https://t.me/{(await bot.get_me()).username}?start={call.from_user.id}"
-    await call.message.answer(f"Рефералы: {get(call.from_user.id,'ref')}\n{link}")
+    link = f"https://t.me/{(await bot.get_me()).username}?start={call.from_user.id}"
+    await call.message.answer(f"👥 Рефералы: {get(call.from_user.id,'ref')}\n\n{link}")
 
 # ===== ПОКУПКИ =====
-@dp.callback_query(F.data=="my")
+@dp.callback_query(F.data == "my")
 @cb
 async def my(call):
-    uid=call.from_user.id
-    kb=[]
-    for pid,(n,_,_) in PRODUCTS.items():
-        if has_product(uid,pid):
-            kb.append([InlineKeyboardButton(text=n,callback_data=f"vid_{pid}")])
+    uid = call.from_user.id
+    kb = []
 
-    await call.message.answer("Покупки",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    for pid, (name, _, _) in PRODUCTS.items():
+        if has_product(uid, pid):
+            kb.append([InlineKeyboardButton(text=name, callback_data=f"vid_{pid}")])
+
+    await call.message.answer("📦 Твои покупки", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("vid_"))
 @cb
-async def vid(call):
-    pid=call.data.split("_")[1]
-    await bot.send_video(call.from_user.id,PRODUCTS[pid][2])
+async def send_video(call):
+    pid = call.data.split("_")[1]
+    await bot.send_video(call.from_user.id, PRODUCTS[pid][2])
 
 # ===== ПРОФИЛЬ =====
-@dp.callback_query(F.data=="profile")
+@dp.callback_query(F.data == "profile")
 @cb
 async def profile(call):
-    uid=call.from_user.id
+    uid = call.from_user.id
+
     await call.message.answer(
-        f"ID: {uid}\n"
-        f"Username: @{call.from_user.username}\n"
-        f"Рефералы: {get(uid,'ref')}\n"
-        f"Донат: {get(uid,'donated')}⭐\n"
-        f"Куплено: {len((get(uid,'purchased') or '').split(','))-1}"
+        f"👤 Профиль\n\n"
+        f"🆔 ID: {uid}\n"
+        f"👤 Username: @{call.from_user.username}\n"
+        f"👥 Рефералы: {get(uid,'ref')}\n"
+        f"💰 Донат: {get(uid,'donated')}⭐\n"
+        f"🎬 Куплено: {len((get(uid,'purchased') or '').split(','))-1}"
     )
 
 # ===== АДМИН =====
-@dp.callback_query(F.data=="admin")
+@dp.callback_query(F.data == "admin")
 @cb
 async def admin(call):
-    if call.from_user.id!=ADMIN_ID:
-        return
-    await call.message.answer("Команды:\n/ban id\n/unban id\n/give id amount")
+    if call.from_user.id != ADMIN_ID:
+        return await call.answer("❌ Нет доступа", show_alert=True)
+
+    await call.message.answer("⚙️ Админка:\n/ban id\n/unban id\n/give id amount")
+
+# ===== КОМАНДЫ =====
+@dp.message(F.text.startswith("/ban"))
+async def cmd_ban(m: types.Message):
+    if m.from_user.id != ADMIN_ID: return
+    uid = int(m.text.split()[1])
+    ban(uid)
+    await m.answer("забанен")
+
+@dp.message(F.text.startswith("/unban"))
+async def cmd_unban(m):
+    if m.from_user.id != ADMIN_ID: return
+    uid = int(m.text.split()[1])
+    unban(uid)
+    await m.answer("разбанен")
+
+@dp.message(F.text.startswith("/give"))
+async def cmd_give(m):
+    if m.from_user.id != ADMIN_ID: return
+    uid, amt = map(int, m.text.split()[1:])
+    add_balance(uid, amt)
+    await m.answer("выдано")
 
 # ===== ЗАПУСК =====
 async def main():
