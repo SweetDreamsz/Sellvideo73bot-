@@ -11,7 +11,7 @@ ADMIN_ID = 8314718448
 CHANNEL_ID = -1003491649657
 CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 PHOTO = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
-WEB_APP_URL = "https://ТВОЯ_ССЫЛКА_НА_ХОСТИНГ/admin.html"
+WEB_APP_URL = "https://htmeetdreamsz99.github.io/Jjakwsieql/admin.html"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
