@@ -14,7 +14,7 @@ CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 PHOTO = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
 
 # Твоя ссылка из GitHub Pages (обязательно с /admin.html)
-WEB_APP_URL = "https://htmeetdreamsz99.github.io/Jjakwsieql/"
+WEB_APP_URL = "https://htmeetdreamsz99.github.io/Jjakwsiekql/"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
