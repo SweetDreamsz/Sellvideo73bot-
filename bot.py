@@ -8,7 +8,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
-# ===== 1. НАСТРОЙКИ (КОНФИГУРАЦИЯ) =====
+# ===== 1. НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 CHANNEL_ID = -1003491649657
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ===== 2. БАЗА ДАННЫХ (DB) =====
+# ===== 2. БАЗА ДАННЫХ (SQLite) =====
 conn = sqlite3.connect("db.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -36,13 +36,12 @@ def init_db():
         status TEXT DEFAULT 'user'
     )""")
     cur.execute("CREATE TABLE IF NOT EXISTS banned(id INTEGER PRIMARY KEY)")
-    # Таблица для хранения ID медиа-файлов
     cur.execute("CREATE TABLE IF NOT EXISTS media_storage(key TEXT PRIMARY KEY, file_id TEXT, type TEXT)")
     conn.commit()
 
 init_db()
 
-# ===== 3. ТОВАРЫ (PRODUCTS) =====
+# ===== 3. ТОВАРЫ (ПЕРЕНЕСЕНО ПОЛНОСТЬЮ) =====
 PRODUCTS = {
     "1": ("Disable HumaNity Vol 3", 50, "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"),
     "2": ("S.A.C necrophiliA", 100, "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"),
@@ -58,7 +57,7 @@ PRODUCTS = {
     "12": ("BlackSatanas 3", 10, "BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
 }
 
-# ===== 4. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+# ===== 4. ФУНКЦИИ ПРОВЕРКИ =====
 def register_user(uid, ref=None):
     if not cur.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
         cur.execute("INSERT INTO users(id, invited_by) VALUES(?,?)", (uid, ref))
@@ -74,62 +73,59 @@ async def check_sub(uid):
         return m.status in ["creator", "administrator", "member"]
     except: return False
 
-# ===== 5. ОБРАБОТКА ДАННЫХ ИЗ ТЕРМИНАЛА (WEB APP) =====
+# ===== 5. МОСТ: ТЕРМИНАЛ <-> БОТ =====
 @dp.message(F.web_app_data)
 async def web_app_handler(m: types.Message):
-    if m.from_user.id != ADMIN_ID: return
+    if m.from_user.id != ADMIN_ID: return 
     
     try:
-        # Парсим JSON из HTML-панели
         data = json.loads(m.web_app_data.data)
-        cmd = data.get("cmd") or data.get("action") # Поддержка обоих форматов
-        payload = data.get("payload", {})
+        # Поддержка всех форматов команд (cmd/action)
+        cmd = data.get("cmd") or data.get("action")
+        payload = data.get("payload") or data
+        u_id = payload.get("uid") or payload.get("user_id")
         
-        # Если данные пришли в старом формате (user_id напрямую в корне)
-        u_id = payload.get("uid") or data.get("user_id")
+        if not u_id and cmd != "msg":
+            return await m.answer("⚠️ Ошибка: Не указан ID пользователя.")
 
-        # --- КОМАНДА: ВЫДАЧА ЗВЕЗД ---
+        # Выдача звезд
         if cmd in ["stars", "give_stars"]:
-            amount = int(payload.get("amount") or data.get("amount", 0))
+            amount = int(payload.get("amount") or 0)
             cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, u_id))
             conn.commit()
-            await m.answer(f"✅ Баланс {u_id} пополнен на {amount}⭐")
-            try: await bot.send_message(u_id, f"🎁 Админ начислил вам {amount}⭐")
+            await m.answer(f"✅ Баланс `{u_id}` пополнен на `{amount}` ⭐")
+            try: await bot.send_message(u_id, f"🎁 Админ начислил вам {amount} ⭐")
             except: pass
 
-        # --- КОМАНДА: БАН ---
+        # Бан
         elif cmd in ["ban", "ban_user"]:
             cur.execute("INSERT OR IGNORE INTO banned(id) VALUES(?)", (u_id,))
             conn.commit()
-            await m.answer(f"🚫 Пользователь {u_id} заблокирован.")
+            await m.answer(f"🚫 Пользователь `{u_id}` забанен.")
 
-        # --- КОМАНДА: РАССЫЛКА (WORLDWAR73) ---
+        # Рассылка в Worldwar73
         elif cmd == "msg":
             text = payload.get("text")
             await bot.send_message(CHANNEL_ID, text)
-            await m.answer(f"📢 Рассылка в канал завершена.")
+            await m.answer("📢 Рассылка отправлена в канал.")
 
     except Exception as e:
-        await m.answer(f"⚠️ Ошибка терминала: {e}")
+        await m.answer(f"❌ Ошибка терминала: {e}")
 
-# ===== 6. СБОРЩИК ID ФАЙЛОВ ДЛЯ БАЗЫ =====
+# ===== 6. СБОР ID ФАЙЛОВ =====
 @dp.message(F.content_type.in_({'photo', 'video', 'animation'}))
 async def collect_media(m: types.Message):
     if m.from_user.id != ADMIN_ID: return
+    file_id = m.photo[-1].file_id if m.photo else (m.video.file_id if m.video else m.animation.file_id)
+    f_type = "PHOTO" if m.photo else "VIDEO"
     
-    file_id = ""
-    f_type = ""
-    if m.photo: file_id, f_type = m.photo[-1].file_id, "PHOTO"
-    elif m.video: file_id, f_type = m.video.file_id, "VIDEO"
-    
-    if file_id:
-        count = cur.execute("SELECT COUNT(*) FROM media_storage").fetchone()[0]
-        key = f"media_{count + 1}"
-        cur.execute("INSERT INTO media_storage VALUES(?,?,?)", (key, file_id, f_type))
-        conn.commit()
-        await m.reply(f"📦 Сохранено в базу!\nМетка: `{key}`\nID: `{file_id}`")
+    count = cur.execute("SELECT COUNT(*) FROM media_storage").fetchone()[0]
+    key = f"media_{count + 1}"
+    cur.execute("INSERT INTO media_storage VALUES(?,?,?)", (key, file_id, f_type))
+    conn.commit()
+    await m.reply(f"📦 Сохранено!\nКлюч: `{key}`\nID: `{file_id}`")
 
-# ===== 7. КЛАВИАТУРЫ И ХЕНДЛЕРЫ ИНТЕРФЕЙСА =====
+# ===== 7. ИНТЕРФЕЙС МАГАЗИНА =====
 def main_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="cat_0")],
@@ -182,9 +178,7 @@ async def profile(call: types.CallbackQuery):
 async def catalog(call: types.CallbackQuery):
     page = int(call.data.split("_")[1])
     items = list(PRODUCTS.items())[page*5:(page+1)*5]
-    kb = []
-    for pid, (name, price, _) in items:
-        kb.append([InlineKeyboardButton(text=f"{name} — {price}⭐", callback_data=f"pre_{pid}")])
+    kb = [[InlineKeyboardButton(text=f"{name} — {price}⭐", callback_data=f"pre_{pid}")] for pid, (name, price, _) in items]
     nav = []
     if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"cat_{page-1}"))
     if (page+1)*5 < len(PRODUCTS): nav.append(InlineKeyboardButton(text="➡️", callback_data=f"cat_{page+1}"))
