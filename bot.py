@@ -1,22 +1,21 @@
 import asyncio
 import sqlite3
-import logging
+import json
 
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types.web_app_info import WebAppInfo
 
-# ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 CHANNEL_ID = -1003491649657
 CHANNEL_LINK = "https://t.me/+9DI7onJBz0I1ZWQy"
 PHOTO = "https://raw.githubusercontent.com/SweetDreamsz/Sellvideo73bot-/main/photo2.jpg"
+WEB_APP_URL = "https://ТВОЯ_ССЫЛКА_НА_ХОСТИНГ/admin.html"
 
-logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ===== БД =====
 conn = sqlite3.connect("db.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -32,7 +31,6 @@ CREATE TABLE IF NOT EXISTS users(
 cur.execute("CREATE TABLE IF NOT EXISTS banned(id INTEGER PRIMARY KEY)")
 conn.commit()
 
-# ===== ФУНКЦИИ =====
 def register_user(uid, ref=None):
     uid = int(uid)
     if not cur.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
@@ -53,7 +51,6 @@ async def check_sub(uid):
         return m.status in ["creator", "administrator", "member"]
     except: return False
 
-# ===== ТОВАРЫ =====
 PRODUCTS = {
     "1": ("Disable HumaNity Vol 3", 50, "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"),
     "2": ("S.A.C necrophiliA", 100, "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"),
@@ -69,7 +66,6 @@ PRODUCTS = {
     "12": ("BlackSatanas 3", 10, "BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
 }
 
-# ===== КЛАВИАТУРЫ =====
 def main_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="cat_0")],
@@ -79,7 +75,6 @@ def main_kb():
         [InlineKeyboardButton(text="⚙️ Админ", callback_data="admin")]
     ])
 
-# ===== ХЕНДЛЕРЫ =====
 @dp.message(F.text.startswith("/start"))
 async def start(m: types.Message):
     uid = m.from_user.id
@@ -94,6 +89,11 @@ async def start(m: types.Message):
             [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
         ])
         return await m.answer("Подпишитесь на канал!", reply_markup=kb)
+    
+    remove_kb = types.ReplyKeyboardRemove()
+    msg = await m.answer(".", reply_markup=remove_kb)
+    await msg.delete()
+    
     await m.answer_photo(PHOTO, caption="💜 Главное меню", reply_markup=main_kb())
 
 @dp.callback_query(F.data == "check_sub")
@@ -102,12 +102,12 @@ async def sub_check(call: types.CallbackQuery):
         await call.answer("✅ Доступ открыт")
         await call.message.delete()
         await call.message.answer_photo(PHOTO, caption="💜 Главное меню", reply_markup=main_kb())
-    else: await call.answer("❌ Нет подписки", show_alert=True)
+    else: 
+        await call.answer("❌ Нет подписки", show_alert=True)
 
-# КНОПКА БАЛАНС (ИСПРАВЛЕНО)
 @dp.callback_query(F.data == "wallet")
 async def wallet_menu(call: types.CallbackQuery):
-    register_user(call.from_user.id) # Гарантируем наличие в базе
+    register_user(call.from_user.id)
     bal = get_balance(call.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="+50⭐", callback_data="topup_50"), InlineKeyboardButton(text="+100⭐", callback_data="topup_100")],
@@ -120,7 +120,6 @@ async def topup(call: types.CallbackQuery):
     amt = int(call.data.split("_")[1])
     await bot.send_invoice(call.from_user.id, title="Пополнение", description=f"Покупка {amt} звезд", payload=f"top_{amt}", currency="XTR", prices=[LabeledPrice(label="Stars", amount=amt)], provider_token="")
 
-# КАТАЛОГ И ОПЛАТА
 @dp.callback_query(F.data.startswith("cat_"))
 async def catalog(call: types.CallbackQuery):
     await call.answer()
@@ -166,7 +165,6 @@ async def buy_now(call: types.CallbackQuery):
     name, price, _ = PRODUCTS[pid]
     await bot.send_invoice(call.from_user.id, title=name, description="Покупка", payload=f"buy_{pid}", currency="XTR", prices=[LabeledPrice(label="Stars", amount=price)], provider_token="")
 
-# ОБРАБОТКА ОПЛАТ
 @dp.pre_checkout_query()
 async def pre_check(q: types.PreCheckoutQuery):
     await bot.answer_pre_checkout_query(q.id, ok=True)
@@ -185,7 +183,6 @@ async def success(m: types.Message):
         conn.commit()
         await m.answer(f"✅ Баланс пополнен на {amt}⭐")
 
-# ПРОФИЛЬ
 @dp.callback_query(F.data == "profile")
 async def profile(call: types.CallbackQuery):
     uid = call.from_user.id
@@ -198,39 +195,58 @@ async def to_menu(call: types.CallbackQuery):
     await call.answer()
     await call.message.edit_caption(caption="💜 Главное меню", reply_markup=main_kb())
 
-# АДМИНКА
 @dp.callback_query(F.data == "admin")
 async def admin(call: types.CallbackQuery):
-    if call.from_user.id != ADMIN_ID: return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Всем +100⭐", callback_data="giveall_100")],
-        [InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")]
-    ])
-    await call.message.edit_caption(caption="⚙️ Админ\n`/give ID AMOUNT`", reply_markup=kb, parse_mode="Markdown")
+    if call.from_user.id != ADMIN_ID: 
+        return await call.answer("Отказано в доступе", show_alert=True)
+    
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🎛 Открыть WEB-Панель", web_app=WebAppInfo(url=WEB_APP_URL))]],
+        resize_keyboard=True
+    )
+    await call.message.answer("Терминал администратора активирован. Нажми кнопку ниже.", reply_markup=kb)
+    await call.answer()
 
-@dp.callback_query(F.data.startswith("giveall_"))
-async def give_all(call: types.CallbackQuery):
-    amt = int(call.data.split("_")[1])
-    cur.execute("UPDATE users SET balance = balance + ?", (amt,))
-    conn.commit()
-    await call.answer(f"✅ Всем выдано {amt}⭐", show_alert=True)
-
-@dp.message(F.text.startswith("/give"))
-async def give_cmd(m: types.Message):
+@dp.message(F.web_app_data)
+async def web_app_handler(m: types.Message):
     if m.from_user.id != ADMIN_ID: return
-    try:
-        _, uid, amt = m.text.split()
-        register_user(uid) # Регистрируем, если его не было
+    
+    data = json.loads(m.web_app_data.data)
+    act = data.get("action")
+    uid = data.get("uid")
+    amt = data.get("amt")
+    msg_text = data.get("msg")
+
+    if act == "give" and uid and amt:
         cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (int(amt), int(uid)))
         conn.commit()
-        await m.answer("✅ Выдано")
-        try: await bot.send_message(int(uid), f"🎁 Вам начислено {amt}⭐")
+        await m.answer(f"✅ Успешно начислено {amt}⭐ пользователю {uid}")
+        try: await bot.send_message(int(uid), f"🎁 Администратор выдал вам {amt}⭐")
         except: pass
-    except: await m.answer("Ошибка формата")
+
+    elif act == "take" and uid and amt:
+        cur.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (int(amt), int(uid)))
+        conn.commit()
+        await m.answer(f"✅ Успешно списано {amt}⭐ у пользователя {uid}")
+
+    elif act == "ban" and uid:
+        cur.execute("INSERT OR IGNORE INTO banned(id) VALUES(?)", (int(uid),))
+        conn.commit()
+        await m.answer(f"🚫 Пользователь {uid} навсегда заблокирован")
+
+    elif act == "broadcast" and msg_text:
+        users = cur.execute("SELECT id FROM users").fetchall()
+        sent = 0
+        for u in users:
+            try:
+                await bot.send_message(u[0], msg_text)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except: pass
+        await m.answer(f"✅ Рассылка завершена. Доставлено: {sent} юзерам.")
 
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
