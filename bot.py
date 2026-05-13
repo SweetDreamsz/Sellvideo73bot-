@@ -6,9 +6,8 @@ import os
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 
-# ===== 1. НАСТРОЙКИ =====
 BOT_TOKEN = "8637242832:AAEdBKu4R1XhyWHCO1VYxBvo67MapnWGk2k"
 ADMIN_ID = 8314718448
 CHANNEL_ID = -1003491649657
@@ -20,7 +19,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ===== 2. БАЗА ДАННЫХ (SQLite) =====
 conn = sqlite3.connect("db.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -41,7 +39,6 @@ def init_db():
 
 init_db()
 
-# ===== 3. ТОВАРЫ (ПЕРЕНЕСЕНО ПОЛНОСТЬЮ) =====
 PRODUCTS = {
     "1": ("Disable HumaNity Vol 3", 50, "BAACAgIAAxkBAANfaduMEvY26_NwECmM0-jptkIX66kAAu5eAAK8cwhJdoDZmlyZB8M7BA"),
     "2": ("S.A.C necrophiliA", 100, "BAACAgIAAxkBAANiaduMPlKADAoCJyV5LccpZmCy-m4AAms-AAK-lchIyFwgUBEuzx07BA"),
@@ -57,7 +54,6 @@ PRODUCTS = {
     "12": ("BlackSatanas 3", 10, "BAACAgIAAxkBAAN9aduNyhojJpyhmlSrOoft56nKt70AAv1kAAL177BIWZK9Ur0xY_47BA")
 }
 
-# ===== 4. ФУНКЦИИ ПРОВЕРКИ =====
 def register_user(uid, ref=None):
     if not cur.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
         cur.execute("INSERT INTO users(id, invited_by) VALUES(?,?)", (uid, ref))
@@ -73,14 +69,12 @@ async def check_sub(uid):
         return m.status in ["creator", "administrator", "member"]
     except: return False
 
-# ===== 5. МОСТ: ТЕРМИНАЛ <-> БОТ =====
 @dp.message(F.web_app_data)
 async def web_app_handler(m: types.Message):
     if m.from_user.id != ADMIN_ID: return 
     
     try:
         data = json.loads(m.web_app_data.data)
-        # Поддержка всех форматов команд (cmd/action)
         cmd = data.get("cmd") or data.get("action")
         payload = data.get("payload") or data
         u_id = payload.get("uid") or payload.get("user_id")
@@ -88,7 +82,6 @@ async def web_app_handler(m: types.Message):
         if not u_id and cmd != "msg":
             return await m.answer("⚠️ Ошибка: Не указан ID пользователя.")
 
-        # Выдача звезд
         if cmd in ["stars", "give_stars"]:
             amount = int(payload.get("amount") or 0)
             cur.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, u_id))
@@ -97,13 +90,11 @@ async def web_app_handler(m: types.Message):
             try: await bot.send_message(u_id, f"🎁 Админ начислил вам {amount} ⭐")
             except: pass
 
-        # Бан
         elif cmd in ["ban", "ban_user"]:
             cur.execute("INSERT OR IGNORE INTO banned(id) VALUES(?)", (u_id,))
             conn.commit()
             await m.answer(f"🚫 Пользователь `{u_id}` забанен.")
 
-        # Рассылка в Worldwar73
         elif cmd == "msg":
             text = payload.get("text")
             await bot.send_message(CHANNEL_ID, text)
@@ -112,7 +103,6 @@ async def web_app_handler(m: types.Message):
     except Exception as e:
         await m.answer(f"❌ Ошибка терминала: {e}")
 
-# ===== 6. СБОР ID ФАЙЛОВ =====
 @dp.message(F.content_type.in_({'photo', 'video', 'animation'}))
 async def collect_media(m: types.Message):
     if m.from_user.id != ADMIN_ID: return
@@ -125,15 +115,22 @@ async def collect_media(m: types.Message):
     conn.commit()
     await m.reply(f"📦 Сохранено!\nКлюч: `{key}`\nID: `{file_id}`")
 
-# ===== 7. ИНТЕРФЕЙС МАГАЗИНА =====
 def main_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Каталог", callback_data="cat_0")],
         [InlineKeyboardButton(text="💰 Баланс", callback_data="wallet")],
         [InlineKeyboardButton(text="📦 Покупки", callback_data="purchases")],
-        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-        [InlineKeyboardButton(text="⚙️ Админ-панель", web_app=WebAppInfo(url=WEB_APP_URL))]
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]
     ])
+
+@dp.message(F.text == "/admin")
+async def open_admin_panel(m: types.Message):
+    if m.from_user.id != ADMIN_ID: return
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="💻 Терминал", web_app=WebAppInfo(url=WEB_APP_URL))]],
+        resize_keyboard=True
+    )
+    await m.answer("Админ-доступ активирован", reply_markup=kb)
 
 @dp.message(F.text.startswith("/start"))
 async def start(m: types.Message):
@@ -186,7 +183,6 @@ async def catalog(call: types.CallbackQuery):
     kb.append([InlineKeyboardButton(text="🔙 Меню", callback_data="to_menu")])
     await call.message.edit_caption(caption="🎬 Выберите видео:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# ===== 8. ЗАПУСК =====
 async def main():
     await dp.start_polling(bot)
 
