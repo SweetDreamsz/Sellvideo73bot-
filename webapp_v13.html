@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Белый Ключ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fafafa; --card:#ffffff; --ink:#17171a; --muted:#8b8b91;
+    --accent:#e42332; --accent-2:#ff5a63; --accent-soft:#fdecee; --line:#ececef;
+    --onyx:#17171a; --onyx-2:#26262b;
+    --dur:0.6s; --dur-fast:0.16s;
+  }
+  [data-theme="night"]{
+    --bg:#121214; --card:#1b1b1e; --ink:#f3f3f5; --muted:#93939a;
+    --accent:#ff4650; --accent-2:#ff7b82; --accent-soft:#2c1618; --line:#28282c;
+    --onyx:#020203; --onyx-2:#1c1c20;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background: var(--bg); color: var(--ink);
+    font-family:'Manrope', sans-serif; font-weight:500; line-height:1.5;
+    transition: background .35s ease, color .35s ease;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  #app{ max-width:480px; margin:0 auto; padding:0 18px 118px; }
+
+  .rv{ opacity:0; transform: translateY(14px); will-change: transform, opacity;
+    transition: opacity var(--dur) cubic-bezier(.22,.9,.32,1), transform var(--dur) cubic-bezier(.22,.9,.32,1); }
+  .rv.in{ opacity:1; transform: translateY(0); }
+  body.anim-off .rv{ transition:none !important; opacity:1 !important; transform:none !important; }
+
+  header{ display:flex; align-items:center; justify-content:space-between; padding:18px 0 14px; }
+  .brand{ display:flex; align-items:center; gap:11px; }
+  .mark{ width:36px; height:36px; border-radius:11px; background: var(--onyx); display:flex; align-items:center; justify-content:center; flex-shrink:0; position:relative; overflow:hidden; perspective:240px; }
+  .mark svg{ position:relative; z-index:1; overflow:visible; transform-style: preserve-3d; animation: keyDropSpin 3.4s cubic-bezier(.3,.8,.4,1) infinite; }
+  @keyframes keyDropSpin{
+    0%   { transform: translateY(-16px) rotateY(0deg);   opacity:0; }
+    16%  { transform: translateY(0)     rotateY(0deg);   opacity:1; }
+    55%  { transform: translateY(0)     rotateY(360deg); opacity:1; }
+    82%  { transform: translateY(0)     rotateY(360deg); opacity:1; }
+    100% { transform: translateY(-16px) rotateY(360deg); opacity:0; }
+  }
+  .mark::after{
+    content:""; position:absolute; top:-60%; left:-70%; width:45%; height:220%;
+    background: linear-gradient(115deg, transparent 0%, rgba(255,255,255,.65) 50%, transparent 100%);
+    transform: rotate(18deg); animation: markShine 3.4s cubic-bezier(.3,.8,.4,1) infinite; z-index:2; pointer-events:none;
+  }
+  @keyframes markShine{ 0%,58%{ left:-70%; opacity:0; } 62%{ opacity:1; } 88%{ left:140%; opacity:1; } 100%{ left:140%; opacity:0; } }
+  body.anim-off .mark svg{ animation:none; opacity:1; transform:none; }
+  body.anim-off .mark::after{ animation:none; opacity:0; }
+
+  .brand-name{ font-family:'Unbounded', sans-serif; font-weight:700; font-size:15px; letter-spacing:.01em; }
+
+  .theme-btn{ width:38px; height:38px; border-radius:50%; border:1px solid var(--line); background: var(--card);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--ink);
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1), background .35s ease, border-color .35s ease; }
+  .theme-btn:active{ transform: scale(0.88) rotate(-10deg); }
+  .theme-btn svg{ width:18px; height:18px; }
+
+  .status-card{ background: var(--onyx); color:#fff; border-radius:20px; padding:22px; position:relative; overflow:hidden; margin-bottom:16px; }
+  .status-card::before{ content:""; position:absolute; top:-40%; right:-20%; width:200px; height:200px; border-radius:50%;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 70%); opacity:.55; }
+  .status-top{ display:flex; justify-content:space-between; align-items:flex-start; position:relative; z-index:1; }
+  .status-label{ font-size:12px; color: rgba(255,255,255,.6); font-weight:700; }
+  .status-plan{ font-size:22px; font-weight:800; margin-top:4px; color:#fff; }
+  .status-badge{ background: var(--accent); color:#fff; font-size:11px; font-weight:800; padding:5px 11px; border-radius:999px; }
+  .status-expiry{ font-size:12.5px; color: rgba(255,255,255,.65); margin-top:14px; position:relative; z-index:1; }
+  .status-btn{ margin-top:16px; width:100%; background:#fff; color:#111; border:none; border-radius:13px; padding:14px; font-size:14.5px; font-weight:800; cursor:pointer; position:relative; z-index:1;
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1); }
+  .status-btn:active{ transform: scale(0.97); }
+
+  .section{ margin-top:26px; }
+  .section-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .section-title{ font-size:16px; font-weight:800; }
+  .section-hint{ font-size:11.5px; color:var(--muted); font-weight:700; }
+
+  .plan{ position:relative; background: var(--card); border:1.5px solid var(--line); border-radius:16px; padding:15px 16px;
+    margin-bottom:10px; display:flex; align-items:center; gap:13px; cursor:pointer;
+    transition: border-color .2s cubic-bezier(.22,.9,.32,1), transform var(--dur-fast) cubic-bezier(.22,.9,.32,1); }
+  .plan:active{ transform: scale(0.985); }
+  .plan.selected{ border-color: var(--accent); }
+  .radio{ width:19px; height:19px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; position:relative; transition: border-color .2s ease; }
+  .plan.selected .radio{ border-color: var(--accent); }
+  .radio::after{ content:""; position:absolute; inset:3px; border-radius:50%; background: var(--accent); transform: scale(0); transition: transform .18s cubic-bezier(.34,1.56,.64,1); }
+  .plan.selected .radio::after{ transform: scale(1); }
+  .plan-body{ flex:1; }
+  .plan-name{ font-size:14px; font-weight:800; }
+  .plan-desc{ font-size:11.5px; color:var(--muted); margin-top:1px; }
+  .plan-price{ font-size:16px; font-weight:800; white-space:nowrap; }
+  .plan-tag{ position:absolute; top:-8px; left:15px; background:var(--accent); color:#fff; font-size:9.5px; font-weight:800; padding:3px 9px; border-radius:999px; }
+
+  .buy-btn{ width:100%; background: var(--accent); color:#fff; border:none; border-radius:14px; padding:16px; font-size:15px; font-weight:800; cursor:pointer; margin-top:4px;
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1), background .2s ease; }
+  .buy-btn:active{ transform: scale(0.97); }
+  .pay-note{ text-align:center; font-size:11.5px; color:var(--muted); margin-top:10px; }
+
+  .tile{ background: var(--card); border:1px solid var(--line); border-radius:15px; padding:16px; }
+  .tile.soon{ opacity:.6; }
+  .tile-title{ font-size:13.5px; font-weight:800; margin-bottom:4px; }
+  .tile-text{ font-size:11.5px; color:var(--muted); line-height:1.4; }
+
+  .steps-card{ background: var(--card); border:1px solid var(--line); border-radius:16px; padding:6px 16px; }
+  .step{ display:flex; gap:12px; padding:14px 0; border-bottom:1px solid var(--line); }
+  .step:last-child{ border-bottom:none; }
+  .step-num{ width:24px; height:24px; border-radius:50%; background: var(--accent-soft); color: var(--accent);
+    font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .step-title{ font-size:13.5px; font-weight:800; margin-bottom:2px; }
+  .step-text{ font-size:12px; color:var(--muted); }
+
+  .dl-row{ display:flex; gap:8px; margin-top:14px; }
+  .dl-btn{ flex:1; text-align:center; padding:11px; border-radius:11px; border:1.5px solid var(--line); font-size:12.5px; font-weight:700; cursor:pointer; background:var(--card); color:var(--ink);
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1), border-color .2s ease; }
+  .dl-btn:active{ transform: scale(0.95); border-color: var(--accent); }
+
+  .ref-card{ background: var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  .ref-link{ display:flex; align-items:center; gap:10px; background: var(--accent-soft); border-radius:12px; padding:12px 14px; margin-top:14px; }
+  .ref-link span{ flex:1; font-size:12px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ref-link button{ background: var(--ink); color:var(--card); border:none; border-radius:9px; padding:8px 12px; font-size:11.5px; font-weight:800; cursor:pointer; flex-shrink:0;
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1); }
+  .ref-link button:active{ transform: scale(0.92); }
+  .perk{ display:flex; gap:11px; padding:11px 0; border-top:1px solid var(--line); }
+  .perk:first-of-type{ border-top:none; padding-top:0; }
+  .perk-num{ font-size:15px; font-weight:800; color:var(--accent); width:20px; flex-shrink:0; }
+
+  .navbar{ position:fixed; bottom:16px; left:50%; transform: translateX(-50%); display:flex; gap:2px;
+    background: var(--onyx); border:1px solid rgba(255,255,255,.08); border-radius:999px; padding:5px; z-index:20;
+    box-shadow: 0 16px 32px rgba(0,0,0,.32), 0 2px 6px rgba(0,0,0,.2); }
+  .nav-indicator{ position:absolute; top:5px; left:0; bottom:5px; width:52px; border-radius:999px; background: var(--accent);
+    transform: translateX(5px);
+    box-shadow: 0 4px 14px var(--accent-2); z-index:0; transition: transform .38s cubic-bezier(.34,1.4,.4,1), width .38s cubic-bezier(.34,1.4,.4,1); }
+  body.anim-off .nav-indicator{ transition:none; }
+  .nav-btn{ position:relative; z-index:1; width:52px; height:48px; border:none; background:transparent; color: rgba(255,255,255,.5); border-radius:999px;
+    cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    transition: color .25s ease, transform var(--dur-fast) cubic-bezier(.22,.9,.32,1); }
+  .nav-btn:active svg{ transform: scale(0.82); }
+  .nav-btn svg{ width:18px; height:18px; transition: transform .22s cubic-bezier(.34,1.56,.64,1); }
+  .nav-btn span{ font-size:8px; font-weight:700; letter-spacing:.02em; }
+  .nav-btn.active{ color:#fff; }
+  .nav-btn.active svg{ transform: translateY(-1px) scale(1.05); }
+  body.accent-gradient .nav-indicator{ background: var(--accent-gradient); background-size:250% 250%; animation: shimmerBg 4s ease infinite; }
+  body.anim-off.accent-gradient .nav-indicator{ animation:none; background-position:0% 50%; }
+
+  .page{ display:none; }
+  .page.active{ display:block; }
+  .page.enter-r{ animation: enterFromRight var(--dur) cubic-bezier(.22,.9,.32,1) both; }
+  .page.enter-l{ animation: enterFromLeft var(--dur) cubic-bezier(.22,.9,.32,1) both; }
+  @keyframes enterFromRight{ from{ opacity:0; transform: translateX(22px);} to{ opacity:1; transform:translateX(0);} }
+  @keyframes enterFromLeft{ from{ opacity:0; transform: translateX(-22px);} to{ opacity:1; transform:translateX(0);} }
+  body.anim-off .page.enter-r, body.anim-off .page.enter-l{ animation:none !important; }
+
+  .acc{ border-bottom:1px solid var(--line); }
+  .acc:last-child{ border-bottom:none; }
+  .acc-q{ display:flex; align-items:center; justify-content:space-between; padding:15px 2px; cursor:pointer; }
+  .acc-q span{ font-size:13.5px; font-weight:700; }
+  .acc-chevron{ width:18px; height:18px; color:var(--muted); flex-shrink:0; transition: transform .28s cubic-bezier(.22,.9,.32,1); }
+  .acc.open .acc-chevron{ transform: rotate(180deg); color: var(--accent); }
+  .acc-a{ max-height:0; overflow:hidden; transition: max-height .32s cubic-bezier(.22,.9,.32,1); }
+  .acc.open .acc-a{ max-height:200px; }
+  .acc-a-in{ padding:0 2px 15px; font-size:12.5px; color:var(--muted); }
+
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:12px; }
+  .link-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 2px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .link-row:last-child{ border-bottom:none; }
+  .link-row span{ font-size:13.5px; font-weight:700; }
+  .link-row svg{ width:15px; height:15px; color:var(--muted); }
+
+  .toast{
+    position:fixed; left:50%; bottom:92px; transform: translateX(-50%) translateY(16px);
+    background: var(--onyx); color:#fff; padding:13px 18px; border-radius:14px;
+    font-size:13px; font-weight:700; display:flex; align-items:center; gap:9px;
+    box-shadow: 0 14px 30px rgba(0,0,0,.3); opacity:0; pointer-events:none; z-index:30; white-space:nowrap;
+    transition: opacity .28s cubic-bezier(.22,.9,.32,1), transform .28s cubic-bezier(.22,.9,.32,1);
+  }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
+  .toast svg{ width:16px; height:16px; color: var(--accent-2); flex-shrink:0; }
+
+  .seg{ display:flex; background: var(--card); border:1px solid var(--line); border-radius:13px; padding:4px; gap:4px; }
+  .seg-btn{ flex:1; text-align:center; padding:9px 6px; border-radius:9px; border:none; background:transparent; color:var(--muted);
+    font-size:12.5px; font-weight:700; cursor:pointer; transition: background .2s ease, color .2s ease; }
+  .seg-btn.active{ background: var(--accent); color:#fff; }
+
+  .palette-row{ display:flex; gap:12px; padding:6px 2px 2px; }
+  .swatch{ width:34px; height:34px; border-radius:50%; cursor:pointer; position:relative; border:2px solid transparent; flex-shrink:0;
+    transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1), border-color .2s ease; }
+  .swatch:active{ transform: scale(0.88); }
+  .swatch.active{ border-color: var(--ink); }
+  .swatch.active::after{ content:"✓"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:800; }
+  .swatch.shimmer{ animation: shimmerBg 3s ease infinite; }
+  @keyframes shimmerBg{ 0%{ background-position:0% 50%; } 50%{ background-position:100% 50%; } 100%{ background-position:0% 50%; } }
+  body.anim-off .swatch.shimmer{ animation:none; background-position:0% 50%; }
+
+  body.accent-gradient .buy-btn,
+  body.accent-gradient .status-badge,
+  body.accent-gradient .plan-tag{
+    background: var(--accent-gradient) !important; background-size:250% 250% !important;
+    animation: shimmerBg 4s ease infinite;
+  }
+  body.anim-off.accent-gradient .buy-btn,
+  body.anim-off.accent-gradient .status-badge,
+  body.anim-off.accent-gradient .plan-tag{ animation:none; background-position:0% 50% !important; }
+
+  .settings-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 2px; border-bottom:1px solid var(--line); gap:12px; }
+  .settings-row:last-child{ border-bottom:none; }
+  .settings-row .label strong{ display:block; font-size:13.5px; font-weight:700; }
+  .settings-row .label span{ font-size:11.5px; color:var(--muted); }
+  .switch{ width:42px; height:24px; border-radius:999px; background: var(--line); position:relative; cursor:pointer; flex-shrink:0; transition: background .2s ease; }
+  .switch::after{ content:""; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition: transform .2s cubic-bezier(.34,1.56,.64,1); }
+  .switch.on{ background: var(--accent); }
+  .switch.on::after{ transform: translateX(18px); }
+
+  .faq-overlay{
+    position:fixed; inset:0; background: var(--bg); z-index:50;
+    transform: translateX(100%); transition: transform var(--dur) cubic-bezier(.22,.9,.32,1);
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+  }
+  .faq-overlay.open{ transform: translateX(0); }
+  body.anim-off .faq-overlay{ transition:none; }
+  .faq-overlay-inner{ max-width:480px; margin:0 auto; padding:18px 18px 40px; }
+  .back-btn{
+    display:flex; align-items:center; gap:6px; background: var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:10px 16px 10px 12px; font-size:13px; font-weight:700; color:var(--ink);
+    cursor:pointer; margin-bottom:18px; transition: transform var(--dur-fast) cubic-bezier(.22,.9,.32,1);
+  }
+  .back-btn:active{ transform: scale(0.95); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg width="20" height="20" viewBox="0 0 25 25" fill="none">
+          <circle cx="12.5" cy="8.2" r="3.6" stroke="#fff" stroke-width="1.6"/>
+          <path d="M12.5 11.7v8.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M12.5 15.6h2.4M12.5 18h1.7" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-name">Белый Ключ</div>
+    </div>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()"></button>
+  </header>
+
+  <section class="page active" id="page-home">
+
+    <div class="status-card rv">
+      <div class="status-top">
+        <div><div class="status-label">Твоя подписка</div><div class="status-plan" id="statusPlan">Не активна</div></div>
+        <div class="status-badge" id="statusBadge">7 дней бесплатно</div>
+      </div>
+      <div class="status-expiry" id="statusExpiry">Оплата через ЮKassa. Подписка придёт автоматически</div>
+      <button class="status-btn" onclick="sendPlan('trial', 0)">Начать бесплатно</button>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Тарифы</div><div class="section-hint">выберите период</div></div>
+
+      <div class="plan rv" data-plan="1_week" data-price="99">
+        <div class="radio"></div>
+        <div class="plan-body"><div class="plan-name">1 неделя</div><div class="plan-desc">Первый тест</div></div>
+        <div class="plan-price">99 ₽</div>
+      </div>
+      <div class="plan rv selected" data-plan="1_month" data-price="299">
+        <div class="plan-tag">ВЫГОДНО</div>
+        <div class="radio"></div>
+        <div class="plan-body"><div class="plan-name">1 месяц</div><div class="plan-desc">Выгодное предложение</div></div>
+        <div class="plan-price">299 ₽</div>
+      </div>
+      <div class="plan rv" data-plan="3_months" data-price="749">
+        <div class="radio"></div>
+        <div class="plan-body"><div class="plan-name">3 месяца</div><div class="plan-desc">Экономия 17%</div></div>
+        <div class="plan-price">749 ₽</div>
+      </div>
+      <div class="plan rv" data-plan="12_months" data-price="2390">
+        <div class="radio"></div>
+        <div class="plan-body"><div class="plan-name">12 месяцев</div><div class="plan-desc">Экономия 33%</div></div>
+        <div class="plan-price">2390 ₽</div>
+      </div>
+
+      <button class="buy-btn rv" onclick="confirmPlan()">Оформить подписку</button>
+      <div class="pay-note rv">Оплата через ЮKassa · рф карта, СБП, SberPay</div>
+    </div>
+
+  </section>
+
+  <section class="page" id="page-friends">
+    <div class="section" style="margin-top:20px;">
+      <div class="section-head"><div class="section-title">Реферальная программа</div></div>
+      <div class="ref-card rv">
+        <div class="perk"><div class="perk-num">1</div><div><div class="step-title">Пригласите друга</div><div class="step-text">Отправьте реферальную ссылку другу, для продления подписки</div></div></div>
+        <div class="perk"><div class="perk-num">2</div><div><div class="step-title">Получите бонус</div><div class="step-text">+3 дня VPN, когда друг оформит любую подписку</div></div></div>
+        <div class="ref-link">
+          <span id="refLinkText">/whitekeybot?start=ref_...</span>
+          <button onclick="copyRefLink()">Копировать</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Мои друзья</div></div>
+      <div class="card" style="text-align:center; color:var(--muted); font-size:13px;">Пока никого нет - поделитесь ссылкой выше</div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Партнёрская программа</div></div>
+      <div class="tile soon">
+        <div class="tile-title">Скоро откроем набор</div>
+        <div class="tile-text">Продавайте «Белый Ключ» своей аудитории и получайте % с каждой продажи. Условия уже готовим.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-guide">
+    <div class="section" style="margin-top:20px;">
+      <div class="section-head"><div class="section-title">Как подключиться</div></div>
+      <div class="steps-card rv">
+        <div class="step"><div class="step-num">1</div><div><div class="step-title">Скачайте Happ</div><div class="step-text">Приложение для приёма конфигурации VPN</div></div></div>
+        <div class="step"><div class="step-num">2</div><div><div class="step-title">Оформите тариф</div><div class="step-text">Выберите период на вкладке «Главная» и оплатите</div></div></div>
+        <div class="step"><div class="step-num">3</div><div><div class="step-title">Добавьте ссылку</div><div class="step-text">Бот пришлёт кнопку «Добавить в Happ» - просто нажмите</div></div></div>
+        <div class="step"><div class="step-num">4</div><div><div class="step-title">Включите VPN</div><div class="step-text">Один тап в Happ - и вы подключены</div></div></div>
+      </div>
+      <div class="dl-row">
+        <div class="dl-btn" onclick="openLink('https://play.google.com/store/apps/details?id=com.happproxy')">Happ · Android</div>
+        <div class="dl-btn" onclick="openLink('https://apps.apple.com/app/happ-proxy-utility/id6504287215')">Happ · iOS</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Частые вопросы</div></div>
+      <div class="card" style="padding:4px 16px;">
+        <div class="link-row" onclick="openFaqDetail('conn')"><span>VPN не подключается</span><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="link-row" onclick="openFaqDetail('pay')"><span>Оплата и продление</span><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="link-row" onclick="openFaqDetail('slow')" style="border-bottom:none;"><span>Медленно работает</span><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="card link-row" onclick="openLink('https://t.me/кто_прочитал_тот_гей')" style="margin-bottom:0;">
+        <span>Написать в поддержку</span>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-settings">
+    <div class="section" style="margin-top:20px;">
+      <div class="section-head"><div class="section-title">Тема оформления</div></div>
+      <div class="seg rv" id="themeSeg">
+        <button class="seg-btn" data-val="auto" onclick="setThemeMode('auto')">Авто</button>
+        <button class="seg-btn" data-val="day" onclick="setThemeMode('day')">День</button>
+        <button class="seg-btn" data-val="night" onclick="setThemeMode('night')">Ночь</button>
+      </div>
+      <div class="tile-text" style="margin-top:8px; padding:0 2px;">В режиме «Авто» тема сама переключается на тёмную в 20:00 по МСК и обратно на светлую в 8:00</div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Цветовая палитра</div></div>
+      <div class="card">
+        <div class="palette-row" id="paletteRow">
+          <div class="swatch" data-palette="red" style="background:#e42332;"></div>
+          <div class="swatch" data-palette="blue" style="background:#2f6fed;"></div>
+          <div class="swatch" data-palette="green" style="background:#1f9d55;"></div>
+          <div class="swatch" data-palette="purple" style="background:#7c3aed;"></div>
+          <div class="swatch" data-palette="orange" style="background:#f2711c;"></div>
+          <div class="swatch shimmer" data-palette="aurora" style="background:linear-gradient(120deg,#8b5cf6,#ec4899,#6366f1,#8b5cf6); background-size:250% 250%;"></div>
+          <div class="swatch shimmer" data-palette="sunset" style="background:linear-gradient(120deg,#f43f5e,#f59e0b,#ec4899,#f43f5e); background-size:250% 250%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Анимации</div></div>
+      <div class="card" style="padding:4px 16px;">
+        <div class="settings-row">
+          <div class="label"><strong>Включить анимации</strong><span>Появление блоков, переходы, значок в шапке</span></div>
+          <div class="switch on" id="animSwitch" onclick="toggleAnim()"></div>
+        </div>
+        <div class="settings-row" style="border-bottom:none;">
+          <div class="label"><strong>Скорость</strong><span>Влияет на появление блоков и переходы между вкладками</span></div>
+        </div>
+        <div class="seg" id="speedSeg">
+          <button class="seg-btn" data-val="slow" onclick="setSpeed('slow')">Медленно</button>
+          <button class="seg-btn" data-val="normal" onclick="setSpeed('normal')">Обычно</button>
+          <button class="seg-btn" data-val="fast" onclick="setSpeed('fast')">Быстро</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Дополнительно</div></div>
+      <div class="card" style="padding:4px 16px;">
+        <div class="settings-row">
+          <div class="label"><strong>Тактильный отклик</strong><span>Лёгкая вибрация на нажатия</span></div>
+          <div class="switch on" id="hapticsSwitch" onclick="toggleHaptics()"></div>
+        </div>
+        <div class="settings-row" style="border-bottom:none;">
+          <div class="label"><strong>Крупный текст</strong><span>Увеличивает интерфейс для удобства чтения</span></div>
+          <div class="switch" id="largeTextSwitch" onclick="toggleLargeText()"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="card link-row" style="margin-bottom:0;">
+        <span>Сбросить настройки оформления</span>
+        <svg viewBox="0 0 24 24" fill="none" onclick="resetSettings()"><path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 15a7 7 0 0012.6 2.5M18.5 9A7 7 0 005.9 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="faq-overlay" id="faqOverlay">
+  <div class="faq-overlay-inner">
+    <button class="back-btn" onclick="closeFaqDetail()">
+      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Назад
+    </button>
+    <div class="card">
+      <div class="section-title" id="faqDetailTitle">Вопрос</div>
+      <div class="tile-text" id="faqDetailBody" style="margin-top:10px; font-size:13.5px; line-height:1.65;"></div>
+    </div>
+    <div class="card link-row" onclick="openLink('https://t.me/кто_прочитал_тот_гей')" style="margin-bottom:0;">
+      <span>Не помогло? Написать в поддержку</span>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <span id="toastText">Готово</span>
+</div>
+
+<div class="navbar" id="navbar">
+  <div class="nav-indicator" id="navIndicator"></div>
+  <button class="nav-btn active" data-page="home" onclick="showPage('home')">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5L12 4l8 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9h12v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Главная</span>
+  </button>
+  <button class="nav-btn" data-page="friends" onclick="showPage('friends')">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M3.5 19c0-3 2.5-5.5 5.5-5.5S14.5 16 14.5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="17.5" cy="9" r="2.3" stroke="currentColor" stroke-width="1.8"/><path d="M15.8 13.6c2.2.3 3.9 2.3 3.9 4.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <span>Друзья</span>
+  </button>
+  <button class="nav-btn" data-page="guide" onclick="showPage('guide')">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Гайд</span>
+  </button>
+  <button class="nav-btn" data-page="settings" onclick="showPage('settings')">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/><path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M6.3 17.7l1.6-1.6M16.1 7.9l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Настройки</span>
+  </button>
+</div>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+var tg = window.Telegram?.WebApp;
+tg?.ready();
+tg?.expand();
+
+// настройки, палитры и прочая фигня
+var SETTINGS_KEY = "wk_settings_v2";
+var DEFAULT_SETTINGS = { themeMode: "auto", palette: "red", animOn: true, speed: "normal", hapticsOn: true, largeText: false };
+
+var PALETTES = {
+  red:    { day: ["#e42332","#ff5a63","#fdecee"], night: ["#ff4650","#ff7b82","#2c1618"] },
+  blue:   { day: ["#2f6fed","#5b93ff","#e8f0ff"], night: ["#5b93ff","#8fb4ff","#16233d"] },
+  green:  { day: ["#1f9d55","#3ecf78","#e6f8ee"], night: ["#3ecf78","#6ee2a0","#123322"] },
+  purple: { day: ["#7c3aed","#a374ff","#f1e9ff"], night: ["#a374ff","#c3a4ff","#241a3d"] },
+  orange: { day: ["#f2711c","#ff9142","#fff0e3"], night: ["#ff9142","#ffb476","#3a2412"] },
+  aurora: {
+    day: ["#8b5cf6","#ec4899","#fbf0fb"],
+    night: ["#a78bfa","#f472b6","#291a3d"],
+    gradient: "linear-gradient(120deg,#8b5cf6,#ec4899,#6366f1,#8b5cf6)"
+  },
+  sunset: {
+    day: ["#f43f5e","#f59e0b","#fff1e6"],
+    night: ["#fb7185","#fbbf24","#3a1f16"],
+    gradient: "linear-gradient(120deg,#f43f5e,#f59e0b,#ec4899,#f43f5e)"
+  }
+};
+
+var SPEED_DUR = { slow: "0.95s", normal: "0.6s", fast: "0.32s" };
+
+function loadSettings() {
+  var raw = localStorage.getItem(SETTINGS_KEY);
+  if (!raw) return Object.assign({}, DEFAULT_SETTINGS);
+  try {
+    var parsed = JSON.parse(raw);
+    return Object.assign({}, DEFAULT_SETTINGS, parsed);
+  } catch (e) {
+    return Object.assign({}, DEFAULT_SETTINGS);
+  }
+}
+function saveSettings(s) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+var settings = loadSettings();
+
+function moscowHour() {
+  var d = new Date();
+  var h = d.getUTCHours() + 3;
+  if (h >= 24) h = h - 24;
+  return h;
+}
+
+function effectiveTheme() {
+  if (settings.themeMode == "day") return "day";
+  if (settings.themeMode == "night") return "night";
+  var h = moscowHour();
+  if (h >= 20 || h < 8) return "night";
+  return "day";
+}
+
+var SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8L6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+var MOON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
+function applyAll() {
+  var eff = effectiveTheme();
+  document.documentElement.setAttribute("data-theme", eff);
+  document.getElementById("themeBtn").innerHTML = (eff === "night") ? SUN : MOON;
+
+  var pal = PALETTES[settings.palette];
+  if (!pal) pal = PALETTES.red; // на всякий случай, вдруг в localStorage мусор
+  var palColors = pal[eff];
+  var accent = palColors[0];
+  var accent2 = palColors[1];
+  var soft = palColors[2];
+
+  document.documentElement.style.setProperty("--accent", accent);
+  document.documentElement.style.setProperty("--accent-2", accent2);
+  document.documentElement.style.setProperty("--accent-soft", soft);
+
+  if (pal.gradient) {
+    document.body.classList.add("accent-gradient");
+    document.documentElement.style.setProperty("--accent-gradient", pal.gradient);
+  } else {
+    document.body.classList.remove("accent-gradient");
+  }
+
+  var dur = SPEED_DUR[settings.speed];
+  if (!dur) dur = SPEED_DUR.normal;
+  document.documentElement.style.setProperty("--dur", dur);
+
+  if (settings.animOn) {
+    document.body.classList.remove("anim-off");
+  } else {
+    document.body.classList.add("anim-off");
+  }
+
+  // раскраска активных пунктов в настройках
+  var themeBtns = document.querySelectorAll("#themeSeg .seg-btn");
+  for (var i = 0; i < themeBtns.length; i++) {
+    themeBtns[i].classList.toggle("active", themeBtns[i].dataset.val === settings.themeMode);
+  }
+  var speedBtns = document.querySelectorAll("#speedSeg .seg-btn");
+  for (var j = 0; j < speedBtns.length; j++) {
+    speedBtns[j].classList.toggle("active", speedBtns[j].dataset.val === settings.speed);
+  }
+  document.querySelectorAll("#paletteRow .swatch").forEach(function (s) {
+    s.classList.toggle("active", s.dataset.palette === settings.palette);
+  });
+
+  document.getElementById("animSwitch").classList.toggle("on", settings.animOn);
+  document.getElementById("hapticsSwitch").classList.toggle("on", settings.hapticsOn);
+  document.getElementById("largeTextSwitch").classList.toggle("on", settings.largeText);
+
+  // костыль для крупного текста, zoom конечно не стандарт но в телеге ок работает
+  document.getElementById("app").style.zoom = settings.largeText ? "1.12" : "1";
+}
+
+function toggleTheme() {
+  var eff = effectiveTheme();
+  settings.themeMode = (eff === "night") ? "day" : "night";
+  saveSettings(settings);
+  applyAll();
+  tg?.HapticFeedback?.impactOccurred("light");
+}
+
+function setThemeMode(mode) {
+  settings.themeMode = mode;
+  saveSettings(settings);
+  applyAll();
+  tg?.HapticFeedback?.selectionChanged();
+}
+
+function setSpeed(v) {
+  settings.speed = v;
+  saveSettings(settings);
+  applyAll();
+  tg?.HapticFeedback?.selectionChanged();
+}
+
+function toggleAnim() {
+  settings.animOn = !settings.animOn;
+  saveSettings(settings);
+  applyAll();
+  tg?.HapticFeedback?.impactOccurred("light");
+}
+
+function resetSettings() {
+  settings = Object.assign({}, DEFAULT_SETTINGS);
+  saveSettings(settings);
+  applyAll();
+  showToast("Настройки сброшены");
+}
+
+var paletteSwatches = document.querySelectorAll("#paletteRow .swatch");
+paletteSwatches.forEach(function (sw) {
+  sw.addEventListener("click", function () {
+    settings.palette = sw.dataset.palette;
+    saveSettings(settings);
+    applyAll();
+    tg?.HapticFeedback?.selectionChanged();
+  });
+});
+
+applyAll();
+
+// раз в 5 минут перепроверяем время, вдруг наступила ночь (авто-тема)
+setInterval(function () {
+  if (settings.themeMode === "auto") applyAll();
+}, 5 * 60 * 1000);
+
+function initReveal(container) {
+  var items = container.querySelectorAll(".rv:not(.in)");
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        requestAnimationFrame(function () { entry.target.classList.add("in"); });
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: "0px 0px -20px 0px" });
+
+  items.forEach(function (el, i) {
+    el.style.transitionDelay = (i * 0.07) + "s";
+    io.observe(el);
+  });
+}
+document.querySelectorAll(".page").forEach(function (p) { initReveal(p); });
+
+var NAV_ORDER = ["home", "friends", "guide", "settings"];
+
+function positionNavIndicator() {
+  var activeBtn = document.querySelector(".nav-btn.active");
+  var indicator = document.getElementById("navIndicator");
+  if (!activeBtn || !indicator) return;
+  indicator.style.width = activeBtn.offsetWidth + "px";
+  indicator.style.transform = "translateX(" + activeBtn.offsetLeft + "px)";
+}
+window.addEventListener("resize", positionNavIndicator);
+
+function showPage(name) {
+  var currentEl = document.querySelector(".page.active");
+  var currentName = currentEl ? currentEl.id.replace("page-", "") : "home";
+  if (currentName === name) return;
+
+  var dir = 1;
+  if (NAV_ORDER.indexOf(name) < NAV_ORDER.indexOf(currentName)) dir = -1;
+
+  currentEl.classList.remove("active", "enter-r", "enter-l");
+
+  var next = document.getElementById("page-" + name);
+  next.classList.add("active", dir > 0 ? "enter-r" : "enter-l");
+  next.addEventListener("animationend", function () {
+    next.classList.remove("enter-r", "enter-l");
+  }, { once: true });
+
+  initReveal(next);
+
+  document.querySelectorAll(".nav-btn").forEach(function (b) {
+    b.classList.toggle("active", b.dataset.page === name);
+  });
+
+  positionNavIndicator();
+  tg?.HapticFeedback?.impactOccurred("light");
+  window.scrollTo({ top: 0 });
+}
+requestAnimationFrame(positionNavIndicator);
+
+var selectedPlan = { plan: "1_month", price: 299 };
+
+document.querySelectorAll(".plan").forEach(function (card) {
+  card.addEventListener("click", function () {
+    document.querySelectorAll(".plan").forEach(function (c) { c.classList.remove("selected"); });
+    card.classList.add("selected");
+    selectedPlan.plan = card.dataset.plan;
+    selectedPlan.price = Number(card.dataset.price);
+    tg?.HapticFeedback?.selectionChanged();
+  });
+});
+
+var PLAN_LABELS = {
+  trial: "Пробный период",
+  "1_week": "1 неделя",
+  "1_month": "1 месяц",
+  "3_months": "3 месяца",
+  "12_months": "12 месяцев"
+};
+
+function confirmPlan() {
+  sendPlan(selectedPlan.plan, selectedPlan.price);
+}
+
+var toastTimer = null;
+function showToast(text) {
+  var toast = document.getElementById("toast");
+  document.getElementById("toastText").textContent = text;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 2400);
+}
+
+function sendPlan(plan, price) {
+  tg?.HapticFeedback?.impactOccurred("medium");
+  var payload = JSON.stringify({ plan: plan, price: price });
+  var label = PLAN_LABELS[plan] || plan;
+
+  if (price > 0) {
+    showToast("Открываем оплату «" + label + "» - " + price + "₽");
+    if (tg?.sendData) tg.sendData(payload);
+    // тут раньше был просто alert, потом заменил на normal toast + задержку под "ожидание оплаты"
+    setTimeout(function () {
+      showToast("Ожидаем подтверждение оплаты - обычно 1-2 минуты");
+    }, 1600);
+  } else {
+    showToast("Заявка «" + label + "» отправлена");
+    if (tg?.sendData) tg.sendData(payload);
+  }
+}
+
+var FAQ = {
+  conn: {
+    title: "Сервера VPN не работают ",
+    body: "Проверьте, что в Happ активна ссылка «Белый Ключ», смените локацию сервера и перезапустите приложение. Если после этого всё ещё не работает - попробуйте удалить и заново добавить подписку через кнопку в боте."
+  },
+  pay: {
+    title: "Оплата и продление",
+    body: "Оплата через ЮKassa прямо в приложении - картой, СБП или SberPay. Автосписаний нет, продление всегда вручную, когда вам удобно. После оплаты доступ обновляется автоматически, обычно за 1-2 минуты."
+  },
+  slow: {
+    title: "Медленно работает",
+    body: "Попробуйте сменить локацию сервера в Happ - иногда ближайший узел загружен. Если не помогло, проверьте скорость интернета без VPN и напишите в поддержку - подберём быстрый сервер под вашу локацию."
+  }
+};
+
+function openFaqDetail(id) {
+  var item = FAQ[id];
+  if (!item) return; // мало ли передадут не тот id
+  document.getElementById("faqDetailTitle").textContent = item.title;
+  document.getElementById("faqDetailBody").textContent = item.body;
+  document.getElementById("faqOverlay").classList.add("open");
+  document.getElementById("navbar").style.display = "none";
+  haptic("light");
+}
+
+function closeFaqDetail() {
+  document.getElementById("faqOverlay").classList.remove("open");
+  document.getElementById("navbar").style.display = "flex";
+  haptic("light");
+}
+
+function haptic(type) {
+  if (!settings.hapticsOn) return;
+  if (type === "select") {
+    tg?.HapticFeedback?.selectionChanged();
+  } else if (type === "success") {
+    tg?.HapticFeedback?.notificationOccurred("success");
+  } else {
+    tg?.HapticFeedback?.impactOccurred(type || "light");
+  }
+}
+
+function toggleHaptics() {
+  settings.hapticsOn = !settings.hapticsOn;
+  saveSettings(settings);
+  applyAll();
+  if (settings.hapticsOn) tg?.HapticFeedback?.impactOccurred("light");
+}
+
+function toggleLargeText() {
+  settings.largeText = !settings.largeText;
+  saveSettings(settings);
+  applyAll();
+  haptic("light");
+}
+
+function copyRefLink() {
+  var uid = tg?.initDataUnsafe?.user?.id || "0";
+  var link = "https:///whitekeybot?start=ref_" + uid;
+  navigator.clipboard?.writeText(link);
+  tg?.HapticFeedback?.notificationOccurred("success");
+  showToast("Ссылка скопирована");
+}
+
+if (tg?.initDataUnsafe?.user?.id) {
+  document.getElementById("refLinkText").textContent = "/whitekeybot?start=ref_" + tg.initDataUnsafe.user.id;
+}
+
+function openLink(url) {
+  tg?.HapticFeedback?.impactOccurred("light");
+  if (tg?.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(url, "_blank");
+  }
+}
+</script>
+</body>
+</html>
